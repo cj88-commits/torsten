@@ -1,0 +1,202 @@
+package com.recordcollection.app.data.api.dto
+
+import com.google.gson.annotations.SerializedName
+
+// ---------------------------------------------------------------------------
+// Envelope — every Subsonic JSON response is wrapped in "subsonic-response"
+// ---------------------------------------------------------------------------
+
+data class PingResponseDto(
+    @SerializedName("subsonic-response") val response: PingBodyDto,
+)
+
+data class PingBodyDto(
+    val status: String,
+    val version: String,
+    /** Server software type, e.g. "navidrome". Not present on all servers. */
+    val type: String? = null,
+    /** Server software version, e.g. "0.53.3". Not present on all servers. */
+    val serverVersion: String? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+// ---------------------------------------------------------------------------
+
+data class ArtistsResponseDto(
+    @SerializedName("subsonic-response") val response: ArtistsBodyDto,
+)
+
+data class ArtistsBodyDto(
+    val status: String,
+    val version: String,
+    val artists: ArtistsContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class ArtistsContainerDto(
+    val ignoredArticles: String? = null,
+    /** Artists grouped by first-letter index. */
+    val index: List<ArtistIndexDto>? = null,
+)
+
+data class ArtistIndexDto(
+    val name: String,
+    val artist: List<ArtistDto>? = null,
+)
+
+// ---------------------------------------------------------------------------
+
+data class ArtistResponseDto(
+    @SerializedName("subsonic-response") val response: ArtistBodyDto,
+)
+
+data class ArtistBodyDto(
+    val status: String,
+    val version: String,
+    val artist: ArtistWithAlbumsDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+// ---------------------------------------------------------------------------
+
+data class AlbumResponseDto(
+    @SerializedName("subsonic-response") val response: AlbumBodyDto,
+)
+
+data class AlbumBodyDto(
+    val status: String,
+    val version: String,
+    val album: AlbumWithSongsDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+// ---------------------------------------------------------------------------
+
+data class AlbumListResponseDto(
+    @SerializedName("subsonic-response") val response: AlbumListBodyDto,
+)
+
+data class AlbumListBodyDto(
+    val status: String,
+    val version: String,
+    val albumList2: AlbumList2ContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class AlbumList2ContainerDto(
+    val album: List<AlbumDto>? = null,
+)
+
+// ---------------------------------------------------------------------------
+
+data class StarResponseDto(
+    @SerializedName("subsonic-response") val response: BaseBodyDto,
+)
+
+data class BaseBodyDto(
+    val status: String,
+    val version: String,
+    val error: SubsonicErrorDto? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Shared entity shapes
+// ---------------------------------------------------------------------------
+
+data class ArtistDto(
+    val id: String,
+    val name: String,
+    val coverArt: String? = null,
+    val albumCount: Int = 0,
+    /** ISO-8601 date string set when the user has starred this artist. */
+    val starred: String? = null,
+)
+
+data class ArtistWithAlbumsDto(
+    val id: String,
+    val name: String,
+    val coverArt: String? = null,
+    val albumCount: Int = 0,
+    val album: List<AlbumDto>? = null,
+)
+
+data class AlbumDto(
+    val id: String,
+    val name: String,
+    val artist: String? = null,
+    val artistId: String? = null,
+    val coverArt: String? = null,
+    val songCount: Int = 0,
+    val duration: Int = 0,
+    val year: Int? = null,
+    val genre: String? = null,
+    /** ISO-8601 date string set when the user has starred this album. */
+    val starred: String? = null,
+)
+
+data class AlbumWithSongsDto(
+    val id: String,
+    val name: String,
+    val artist: String? = null,
+    val artistId: String? = null,
+    val coverArt: String? = null,
+    val songCount: Int = 0,
+    val duration: Int = 0,
+    val year: Int? = null,
+    val genre: String? = null,
+    val starred: String? = null,
+    val song: List<SongDto>? = null,
+)
+
+data class SongDto(
+    val id: String,
+    val title: String,
+    val album: String? = null,
+    val albumId: String? = null,
+    val artist: String? = null,
+    val artistId: String? = null,
+    val track: Int? = null,
+    val discNumber: Int? = null,
+    val year: Int? = null,
+    val duration: Int? = null,
+    val coverArt: String? = null,
+    val size: Long? = null,
+    val contentType: String? = null,
+    val suffix: String? = null,
+    val bitRate: Int? = null,
+    /** ISO-8601 date string set when the user has starred this song. */
+    val starred: String? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Artist info (getArtistInfo2 — biography + external images)
+// ---------------------------------------------------------------------------
+
+data class ArtistInfo2ResponseDto(
+    @SerializedName("subsonic-response") val response: ArtistInfo2BodyDto,
+)
+
+data class ArtistInfo2BodyDto(
+    val status: String,
+    val version: String,
+    val artistInfo2: ArtistInfo2Dto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class ArtistInfo2Dto(
+    val biography: String? = null,
+    val musicBrainzId: String? = null,
+    val lastFmUrl: String? = null,
+    val smallImageUrl: String? = null,
+    val mediumImageUrl: String? = null,
+    val largeImageUrl: String? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Error
+// ---------------------------------------------------------------------------
+
+data class SubsonicErrorDto(
+    val code: Int,
+    val message: String? = null,
+)

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cleartext (plain HTTP) is permitted for all connections because Subsonic servers on
+    local networks and Tailscale commonly run without TLS. A visible warning banner is
+    shown in the UI whenever the configured server URL uses HTTP.
+
+    SSL certificate validation for private-IP and Tailscale hosts is handled in
+    TrustAllCerts.kt via OkHttp so that self-signed certs are accepted.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates
+                src="user"
+                tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

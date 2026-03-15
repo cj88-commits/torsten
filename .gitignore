@@ -1,0 +1,36 @@
+# Gradle build outputs
+build/
+app/build/
+.gradle/
+
+# Android APK / bundle / library outputs
+*.apk
+*.aab
+*.aar
+
+# Local machine configuration (SDK path, signing config overrides)
+local.properties
+keystore.properties
+
+# Keystore / signing files — never commit private keys
+*.jks
+*.keystore
+
+# Java heap dumps (created by Android Studio profiler or OOM crashes)
+*.hprof
+
+# IDE — IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+
+# Captures (Android Studio CPU/memory capture files)
+captures/
+
+# Environment / secrets — never commit
+.env
+google-services.json
+
+# OS metadata
+.DS_Store
+Thumbs.db
