@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#1A1A2E</color>
+    <color name="ic_launcher_background">#0A0A0A</color>
+
+    <!-- Torsten colour tokens -->
+    <color name="colorBackground">#0A0A0A</color>
+    <color name="colorSurface">#141414</color>
+    <color name="colorSurfaceVariant">#1E1E1E</color>
+    <color name="colorPrimary">#FFFFFF</color>
+    <color name="colorOnPrimary">#000000</color>
+    <color name="colorOnBackground">#FFFFFF</color>
+    <color name="colorOnSurface">#FFFFFF</color>
+    <color name="colorOnSurfaceVariant">#8C8C8C</color>
 </resources>

@@ -12,11 +12,11 @@ plugins {
 }
 
 android {
-    namespace = "com.recordcollection.app"
+    namespace = "com.torsten.app"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.recordcollection.app"
+        applicationId = "com.torsten.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -24,17 +24,19 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file(keystoreProps["storeFile"] as String)
-            storePassword = keystoreProps["storePassword"] as String
-            keyAlias = keystoreProps["keyAlias"] as String
-            keyPassword = keystoreProps["keyPassword"] as String
+        if (keystoreFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (keystoreFile.exists()) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

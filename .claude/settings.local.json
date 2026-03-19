@@ -56,7 +56,20 @@
       "Bash(ls:*)",
       "Bash(./gradlew clean:*)",
       "Bash(./gradlew assembleRelease 2>&1 | tail -15)",
-      "Bash(./gradlew assembleRelease -x lintVitalAnalyzeRelease 2>&1 | tail -15)"
+      "Bash(./gradlew assembleRelease -x lintVitalAnalyzeRelease 2>&1 | tail -15)",
+      "Bash(adb uninstall:*)",
+      "Read(//c/torsten/$LOCALAPPDATA/Android/Sdk/platform-tools/**)",
+      "Read(//c/Users/**)",
+      "Bash(ADB=\"C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe\"\n\"$ADB\" devices 2>&1)",
+      "Bash(ADB=\"C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe\"\n\"$ADB\" shell cmd package resolve-activity --brief -a android.intent.action.MAIN \\\\\n  -c android.intent.category.LAUNCHER com.torsten.app 2>&1; \\\\\necho \"---\"; \\\\\n\"$ADB\" shell aapt2 dump badging \\\\\n  /data/app/~~*/com.torsten.app*/base.apk 2>/dev/null | grep \"label\\\\|package\" | head -5 || \\\\\n\"$ADB\" shell dumpsys package com.torsten.app | grep \"label\" | head -5)",
+      "Bash(./gradlew assembleDebug 2>&1 | tail -30)",
+      "Bash(ADB=\"/c/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe\" && \"$ADB\" uninstall com.torsten.app && \"$ADB\" install app/build/outputs/apk/debug/app-debug.apk)",
+      "Bash(ADB=\"/c/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe\" && \"$ADB\" install -r app/build/outputs/apk/debug/app-debug.apk)",
+      "Bash(./gradlew :app:compileDebugKotlin 2>&1 | tail -40)",
+      "Bash(./gradlew :app:compileDebugKotlin 2>&1 | grep -E \"error:|warning:|BUILD\")",
+      "Bash(./gradlew :app:compileDebugKotlin 2>&1 | grep -E \"error:|warning:|BUILD\" | head -60)",
+      "Bash(./gradlew :app:compileDebugKotlin 2>&1 | grep -E \"error:\" | head -60)",
+      "Bash(./gradlew assembleDebug 2>&1 | tail -15)"
     ]
   }
 }
