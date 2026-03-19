@@ -56,6 +56,7 @@ internal interface SubsonicApiService {
         @Query("type") type: String,
         @Query("size") size: Int,
         @Query("offset") offset: Int,
+        @Query("genre") genre: String? = null,
     ): AlbumListResponseDto
 
     @GET("rest/getGenres")

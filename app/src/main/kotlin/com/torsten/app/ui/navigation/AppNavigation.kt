@@ -60,6 +60,12 @@ import com.torsten.app.ui.artists.ArtistListViewModel
 import com.torsten.app.ui.artists.ArtistListViewModelFactory
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.MiniPlayer
+import com.torsten.app.ui.albumlist.AlbumListScreen
+import com.torsten.app.ui.albumlist.AlbumListViewModel
+import com.torsten.app.ui.albumlist.AlbumListViewModelFactory
+import com.torsten.app.ui.genre.GenreScreen
+import com.torsten.app.ui.genre.GenreViewModel
+import com.torsten.app.ui.genre.GenreViewModelFactory
 import com.torsten.app.ui.home.HomeScreen
 import com.torsten.app.ui.home.HomeViewModel
 import com.torsten.app.ui.home.HomeViewModelFactory
@@ -182,6 +188,12 @@ fun AppNavigation() {
                     onAlbumClick = { albumId, title ->
                         navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
                     },
+                    onGenreClick = { genre ->
+                        navController.navigate(Screen.Genre.createRoute(genre))
+                    },
+                    onSeeAll = { listType, title ->
+                        navController.navigate(Screen.AlbumList.createRoute(listType, title))
+                    },
                 )
             }
 
@@ -197,6 +209,9 @@ fun AppNavigation() {
                         navController.navigate(Screen.ArtistDetail.createRoute(artistId))
                     },
                     onAddToPlaylist   = { songId -> playlistPickerSongId = songId },
+                    onGenreClick      = { genre ->
+                        navController.navigate(Screen.Genre.createRoute(genre))
+                    },
                 )
             }
 
@@ -386,6 +401,42 @@ fun AppNavigation() {
                     initialName = initialName,
                     onNavigateUp = { navController.navigateUp() },
                     onAddToPlaylist = { songId -> playlistPickerSongId = songId },
+                )
+            }
+
+            composable(
+                route = Screen.Genre.route,
+                arguments = listOf(navArgument("genreName") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val genre = backStackEntry.arguments?.getString("genreName").orEmpty()
+                val vm: GenreViewModel = viewModel(factory = GenreViewModelFactory(context, genre))
+                GenreScreen(
+                    viewModel = vm,
+                    genre = genre,
+                    onAlbumClick = { albumId, title ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
+                    },
+                    onNavigateUp = { navController.navigateUp() },
+                )
+            }
+
+            composable(
+                route = Screen.AlbumList.route,
+                arguments = listOf(
+                    navArgument("listType") { type = NavType.StringType },
+                    navArgument("title") { type = NavType.StringType; defaultValue = "" },
+                ),
+            ) { backStackEntry ->
+                val listType = backStackEntry.arguments?.getString("listType").orEmpty()
+                val title = backStackEntry.arguments?.getString("title").orEmpty()
+                val vm: AlbumListViewModel = viewModel(factory = AlbumListViewModelFactory(context, listType))
+                AlbumListScreen(
+                    viewModel = vm,
+                    title = title,
+                    onAlbumClick = { albumId, albumTitle ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId, albumTitle))
+                    },
+                    onNavigateUp = { navController.navigateUp() },
                 )
             }
 

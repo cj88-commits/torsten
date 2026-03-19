@@ -1,12 +1,12 @@
 package com.torsten.app.ui.home
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +53,8 @@ private val RowPadding  = 16.dp
 fun HomeScreen(
     viewModel: HomeViewModel,
     onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
+    onGenreClick: (genre: String) -> Unit = {},
+    onSeeAll: (listType: String, title: String) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -87,32 +88,36 @@ fun HomeScreen(
                     Spacer(Modifier.height(8.dp))
 
                     AlbumRow(
-                        title        = "Recently Played",
-                        albums       = state.recentlyPlayed,
-                        isLoading    = state.isLoading,
+                        title          = "Recently Played",
+                        albums         = state.recentlyPlayed,
+                        isLoading      = state.isLoading,
                         getCoverArtUrl = viewModel::getCoverArtUrl,
-                        onAlbumClick = onAlbumClick,
+                        onAlbumClick   = onAlbumClick,
+                        onSeeAll       = { onSeeAll("recent", "Recently Played") },
                     )
 
                     AlbumRow(
-                        title        = "New Additions",
-                        albums       = state.newAdditions,
-                        isLoading    = state.isLoading,
+                        title          = "New Additions",
+                        albums         = state.newAdditions,
+                        isLoading      = state.isLoading,
                         getCoverArtUrl = viewModel::getCoverArtUrl,
-                        onAlbumClick = onAlbumClick,
+                        onAlbumClick   = onAlbumClick,
+                        onSeeAll       = { onSeeAll("newest", "New Additions") },
                     )
 
                     AlbumRow(
-                        title        = "Most Played",
-                        albums       = state.mostPlayed,
-                        isLoading    = state.isLoading,
+                        title          = "Most Played",
+                        albums         = state.mostPlayed,
+                        isLoading      = state.isLoading,
                         getCoverArtUrl = viewModel::getCoverArtUrl,
-                        onAlbumClick = onAlbumClick,
+                        onAlbumClick   = onAlbumClick,
+                        onSeeAll       = { onSeeAll("frequent", "Most Played") },
                     )
 
                     GenreRow(
-                        genres    = state.genres,
-                        isLoading = state.isLoading,
+                        genres       = state.genres,
+                        isLoading    = state.isLoading,
+                        onGenreClick = onGenreClick,
                     )
 
                     Spacer(Modifier.height(16.dp))
@@ -131,9 +136,10 @@ private fun AlbumRow(
     isLoading: Boolean,
     getCoverArtUrl: (id: String, size: Int) -> String?,
     onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
+    onSeeAll: (() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        SectionHeading(title)
+        SectionHeading(title, onSeeAll = onSeeAll)
 
         if (isLoading) {
             LazyRow(
@@ -174,9 +180,8 @@ private fun AlbumRow(
 private fun GenreRow(
     genres: List<GenreDto>,
     isLoading: Boolean,
+    onGenreClick: (String) -> Unit = {},
 ) {
-    val context = LocalContext.current
-
     Column(modifier = Modifier.fillMaxWidth()) {
         SectionHeading("Genres")
 
@@ -201,9 +206,7 @@ private fun GenreRow(
             ) {
                 items(genres, key = { it.name }) { genre ->
                     SuggestionChip(
-                        onClick = {
-                            Toast.makeText(context, "Genre: ${genre.name}", Toast.LENGTH_SHORT).show()
-                        },
+                        onClick = { onGenreClick(genre.name) },
                         label = {
                             Text(
                                 text = genre.name,
@@ -272,14 +275,30 @@ private fun HomeAlbumCard(
 // ─── Section heading ──────────────────────────────────────────────────────────
 
 @Composable
-private fun SectionHeading(text: String) {
-    Text(
-        text       = text,
-        fontSize   = 18.sp,
-        fontWeight = FontWeight.Bold,
-        color      = Color.White,
-        modifier   = Modifier.padding(start = RowPadding, end = RowPadding, bottom = 10.dp),
-    )
+private fun SectionHeading(text: String, onSeeAll: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = RowPadding, end = 8.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text       = text,
+            fontSize   = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color      = Color.White,
+        )
+        if (onSeeAll != null) {
+            TextButton(onClick = onSeeAll) {
+                Text(
+                    text  = "See all",
+                    color = Color(0xFF8C8C8C),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+    }
 }
 
 // ─── Skeleton placeholders ────────────────────────────────────────────────────

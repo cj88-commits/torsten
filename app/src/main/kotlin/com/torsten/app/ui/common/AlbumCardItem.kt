@@ -189,6 +189,79 @@ fun AlbumCardItem(
     }
 }
 
+// ─── Network album card (for API-fetched AlbumDto grids) ─────────────────────
+
+/**
+ * Album grid card for API-fetched albums (AlbumDto). Used by GenreScreen and AlbumListScreen
+ * where no offline/download state tracking is needed.
+ */
+@Composable
+fun NetworkAlbumCard(
+    albumId: String,
+    albumTitle: String,
+    albumArtist: String,
+    coverArtId: String?,
+    coverArtUrl: String?,
+    onClick: (albumId: String, albumTitle: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        shape = RoundedCornerShape(6.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onClick(albumId, albumTitle) },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f),
+        ) {
+            AlbumCoverArt(
+                coverArtUrl = coverArtUrl,
+                coverArtId = coverArtId,
+                contentDescription = albumTitle,
+                modifier = Modifier.fillMaxSize(),
+                isOnline = true,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.35f to Color.Black.copy(alpha = 0.55f),
+                                1f to Color.Black.copy(alpha = 0.85f),
+                            ),
+                        ),
+                    )
+                    .padding(horizontal = 5.dp, vertical = 5.dp),
+            ) {
+                Column {
+                    Text(
+                        text = albumTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (albumArtist.isNotEmpty()) {
+                        Text(
+                            text = albumArtist,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ─── Cover art with placeholder ───────────────────────────────────────────────
 
 @Composable

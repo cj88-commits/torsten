@@ -118,8 +118,9 @@ class SubsonicApiClient(private val config: ServerConfig) {
         type: String,
         size: Int = 50,
         offset: Int = 0,
+        genre: String? = null,
     ): List<AlbumDto> {
-        val body = service.getAlbumList2(type, size, offset).response
+        val body = service.getAlbumList2(type, size, offset, genre).response
         checkStatus(body.status, body.error?.message)
         return body.albumList2?.album.orEmpty()
     }

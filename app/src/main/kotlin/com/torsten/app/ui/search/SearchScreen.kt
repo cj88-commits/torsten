@@ -84,6 +84,7 @@ fun SearchScreen(
     onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
     onArtistClick: (artistId: String) -> Unit,
     onAddToPlaylist: (songId: String) -> Unit = {},
+    onGenreClick: (genre: String) -> Unit = {},
 ) {
     val query   by viewModel.query.collectAsStateWithLifecycle()
     val results by viewModel.results.collectAsStateWithLifecycle()
@@ -200,14 +201,12 @@ fun SearchScreen(
                 // Idle — show recent searches + browse by genre
                 query.isBlank() -> {
                     IdleContent(
-                        recentSearches     = recent,
-                        genres             = genres,
-                        onRecentClick      = viewModel::selectRecentSearch,
-                        onRecentRemove     = viewModel::removeRecentSearch,
-                        onClearAllRecent   = viewModel::clearRecentSearches,
-                        onGenreClick       = { genre ->
-                            Toast.makeText(context, "Genre: ${genre.name}", Toast.LENGTH_SHORT).show()
-                        },
+                        recentSearches   = recent,
+                        genres           = genres,
+                        onRecentClick    = viewModel::selectRecentSearch,
+                        onRecentRemove   = viewModel::removeRecentSearch,
+                        onClearAllRecent = viewModel::clearRecentSearches,
+                        onGenreClick     = onGenreClick,
                     )
                 }
 
@@ -273,7 +272,7 @@ private fun IdleContent(
     onRecentClick: (String) -> Unit,
     onRecentRemove: (String) -> Unit,
     onClearAllRecent: () -> Unit,
-    onGenreClick: (com.torsten.app.data.api.dto.GenreDto) -> Unit,
+    onGenreClick: (String) -> Unit = {},
 ) {
     LazyColumn(
         modifier      = Modifier.fillMaxSize(),
@@ -305,7 +304,7 @@ private fun IdleContent(
                 Spacer(Modifier.height(4.dp))
             }
             item {
-                GenreGrid(genres = genres, onGenreClick = onGenreClick)
+                GenreGrid(genres = genres, onGenreClick = { genre -> onGenreClick(genre.name) })
             }
         }
     }
