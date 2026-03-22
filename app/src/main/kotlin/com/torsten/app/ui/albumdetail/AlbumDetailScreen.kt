@@ -73,6 +73,7 @@ import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.playback.PlaybackViewModel
+import com.torsten.app.ui.theme.TorstenColor
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -508,18 +509,28 @@ private fun DownloadButton(
     val downloadProgress by downloadProgressFlow.collectAsStateWithLifecycle()
     val isActive = downloadState == DownloadState.QUEUED || downloadState == DownloadState.DOWNLOADING
     val isComplete = downloadState == DownloadState.COMPLETE
+    val isFailed = downloadState == DownloadState.FAILED || downloadState == DownloadState.PARTIAL
 
     // OutlinedButton doesn't expose onLongClick, so we build a look-alike using
     // Surface + combinedClickable — the only reliable way to have separate tap / long-press handlers.
-    val borderColor = if (isComplete) MaterialTheme.colorScheme.outline.copy(alpha = 0.38f)
-                      else MaterialTheme.colorScheme.outline
-    val contentColor = if (isComplete) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                       else MaterialTheme.colorScheme.primary
+    val borderColor = when {
+        isComplete -> null
+        isFailed -> TorstenColor.Error
+        isActive -> Color.White.copy(alpha = 0.2f)
+        else -> Color.White.copy(alpha = 0.3f)
+    }
+    val bgColor = if (isComplete) TorstenColor.Success else Color.Transparent
+    val contentColor = when {
+        isComplete -> Color.White
+        isFailed -> TorstenColor.Error
+        isActive -> TorstenColor.TextTertiary
+        else -> Color.White
+    }
 
     Surface(
         shape = RoundedCornerShape(50),
-        border = BorderStroke(1.dp, borderColor),
-        color = Color.Transparent,
+        border = borderColor?.let { BorderStroke(1.dp, it) },
+        color = bgColor,
         contentColor = contentColor,
         modifier = Modifier
             .height(48.dp)
@@ -548,9 +559,13 @@ private fun DownloadButton(
                     Text("Download", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.QUEUED -> {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = TorstenColor.TextTertiary,
+                    )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Waiting…", style = MaterialTheme.typography.labelLarge)
+                    Text("Queued…", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.DOWNLOADING -> {
                     CircularProgressIndicator(
@@ -564,12 +579,12 @@ private fun DownloadButton(
                 DownloadState.COMPLETE -> {
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Downloaded", style = MaterialTheme.typography.labelLarge)
+                    Text("Downloaded ✓", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.PARTIAL, DownloadState.FAILED -> {
                     Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Retry", style = MaterialTheme.typography.labelLarge)
+                    Text("Retry", style = MaterialTheme.typography.labelLarge, color = TorstenColor.Error)
                 }
             }
         }

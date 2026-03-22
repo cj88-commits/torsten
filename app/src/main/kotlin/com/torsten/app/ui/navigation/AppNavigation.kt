@@ -14,13 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -87,6 +85,9 @@ import com.torsten.app.ui.search.SearchViewModelFactory
 import com.torsten.app.ui.nowplaying.NowPlayingScreen
 import com.torsten.app.ui.playback.PlaybackViewModel
 import com.torsten.app.ui.playback.PlaybackViewModelFactory
+import com.torsten.app.ui.downloads.DownloadsScreen
+import com.torsten.app.ui.downloads.DownloadsViewModel
+import com.torsten.app.ui.downloads.DownloadsViewModelFactory
 import com.torsten.app.ui.queue.QueueScreen
 import com.torsten.app.ui.random.RandomScreen
 import com.torsten.app.ui.random.RandomViewModel
@@ -108,7 +109,7 @@ private val tabRoutes = setOf(
     Screen.Random.route,
     Screen.Artists.route,
     Screen.Playlists.route,
-    Screen.Queue.route,
+    Screen.Downloads.route,
     Screen.Settings.route,
 )
 
@@ -135,7 +136,6 @@ fun AppNavigation() {
     )
     val playbackState by playbackViewModel.state.collectAsStateWithLifecycle()
     val isOnline by playbackViewModel.isOnline.collectAsStateWithLifecycle()
-    val priorityQueueSize by playbackViewModel.priorityQueue.collectAsStateWithLifecycle()
 
     // Shared PlaylistsViewModel scoped to the navigation graph
     val playlistsViewModel: PlaylistsViewModel = viewModel(factory = PlaylistsViewModelFactory(context))
@@ -177,7 +177,6 @@ fun AppNavigation() {
                         currentRoute = currentRoute,
                         navController = navController,
                         onRandomReselect = { randomReselectCallback?.invoke() },
-                        priorityQueueSize = priorityQueueSize.size,
                     )
                 }
             }
@@ -240,6 +239,24 @@ fun AppNavigation() {
                 QueueScreen(
                     playbackViewModel = playbackViewModel,
                     onNavigateToLibrary = {
+                        navController.navigate(Screen.Albums.route) {
+                            popUpTo(Screen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
+            }
+
+            composable(Screen.Downloads.route) {
+                val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModelFactory(context))
+                DownloadsScreen(
+                    viewModel = vm,
+                    isOnline = isOnline,
+                    onAlbumClick = { albumId, title ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
+                    },
+                    onBrowseLibrary = {
                         navController.navigate(Screen.Albums.route) {
                             popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
@@ -585,7 +602,6 @@ private fun AppBottomBar(
     currentRoute: String?,
     navController: NavController,
     onRandomReselect: () -> Unit,
-    priorityQueueSize: Int = 0,
 ) {
     val itemColors = NavigationBarItemDefaults.colors(
         selectedIconColor = Color.White,
@@ -650,28 +666,18 @@ private fun AppBottomBar(
             colors = itemColors,
         )
 
-        // ── Queue ─────────────────────────────────────────────────────────────
+        // ── Downloads ─────────────────────────────────────────────────────────
         NavigationBarItem(
-            selected = currentRoute == Screen.Queue.route,
+            selected = currentRoute == Screen.Downloads.route,
             onClick = {
-                navController.navigate(Screen.Queue.route) {
+                navController.navigate(Screen.Downloads.route) {
                     popUpTo(Screen.Home.route) { saveState = true }
                     launchSingleTop = true
                     restoreState = true
                 }
             },
-            icon = {
-                BadgedBox(
-                    badge = {
-                        if (priorityQueueSize > 0) {
-                            Badge { Text(priorityQueueSize.toString()) }
-                        }
-                    },
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue")
-                }
-            },
-            label = { Text("Queue") },
+            icon = { Icon(Icons.Filled.Download, contentDescription = "Downloads") },
+            label = { Text("Downloads") },
             colors = itemColors,
         )
 
