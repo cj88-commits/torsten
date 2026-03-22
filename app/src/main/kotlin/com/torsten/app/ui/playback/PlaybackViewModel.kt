@@ -525,7 +525,21 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    private fun playMix(songs: List<SongDto>, config: ServerConfig) {
+    /**
+     * Public entry-point for playing an ad-hoc list of [SongDto]s (e.g. artist top tracks).
+     * Pass [shuffle]=true to randomise order; [startIndex] sets which track begins playback.
+     */
+    fun playFromSongDtos(
+        songs: List<SongDto>,
+        config: ServerConfig,
+        shuffle: Boolean = false,
+        startIndex: Int = 0,
+    ) {
+        val ordered = if (shuffle) songs.shuffled() else songs
+        playMix(ordered, config, if (shuffle) 0 else startIndex.coerceIn(0, (ordered.size - 1).coerceAtLeast(0)))
+    }
+
+    private fun playMix(songs: List<SongDto>, config: ServerConfig, startIndex: Int = 0) {
         val controller = mediaController ?: run {
             Timber.tag("[Player]").w("playMix called before MediaController connected")
             return
@@ -591,11 +605,11 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             )
         }
 
-        controller.setMediaItems(allMediaItems, 0, 0L)
+        controller.setMediaItems(allMediaItems, startIndex, 0L)
         controller.playWhenReady = true
         controller.prepare()
-        queueManager.setBackgroundSequence(bgTracks, 0)
-        Timber.tag("[Player]").d("playMix: %d tracks, seed=%s", songs.size, songs.firstOrNull()?.id)
+        queueManager.setBackgroundSequence(bgTracks, startIndex)
+        Timber.tag("[Player]").d("playMix: %d tracks, startIndex=%d, seed=%s", songs.size, startIndex, songs.firstOrNull()?.id)
     }
 
     // ─── Queue management ─────────────────────────────────────────────────────

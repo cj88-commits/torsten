@@ -442,10 +442,20 @@ fun AppNavigation() {
                 val vm: ArtistDetailViewModel = viewModel(factory = ArtistDetailViewModelFactory(context, artistId))
                 ArtistDetailScreen(
                     viewModel = vm,
+                    playbackViewModel = playbackViewModel,
                     onAlbumClick = { albumId, title ->
                         navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
                     },
                     onNavigateUp = { navController.navigateUp() },
+                    onStartInstantMix = { seed ->
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            playbackViewModel.startInstantMix(seed, config)
+                        }
+                    },
                 )
             }
 
