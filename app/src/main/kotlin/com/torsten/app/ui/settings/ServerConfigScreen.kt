@@ -46,8 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private val TopBarBackground = Color(0xFF0A0A0A)
-private val DarkSurface = Color(0xFF141414)
-private val DarkBackground = Color(0xFF141414)
+private val DarkSurface = Color(0xFF111111)
+private val DarkBackground = Color(0xFF111111)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

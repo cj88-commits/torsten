@@ -164,6 +164,7 @@ data class SongDto(
     val contentType: String? = null,
     val suffix: String? = null,
     val bitRate: Int? = null,
+    val genre: String? = null,
     /** ISO-8601 date string set when the user has starred this song. */
     val starred: String? = null,
 )
@@ -301,4 +302,87 @@ data class PlaylistWithTracksDto(
     val duration: Int = 0,
     val coverArt: String? = null,
     val entry: List<SongDto>? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Instant Mix (getSimilarArtists2 / getTopSongs / getSimilarSongs2 / getSongsByGenre)
+// ---------------------------------------------------------------------------
+
+data class SimilarArtists2ResponseDto(
+    @SerializedName("subsonic-response") val response: SimilarArtists2BodyDto,
+)
+
+data class SimilarArtists2BodyDto(
+    val status: String,
+    val version: String,
+    val similarArtists2: SimilarArtists2ContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class SimilarArtists2ContainerDto(
+    val artist: List<ArtistDto>? = null,
+)
+
+data class TopSongsResponseDto(
+    @SerializedName("subsonic-response") val response: TopSongsBodyDto,
+)
+
+data class TopSongsBodyDto(
+    val status: String,
+    val version: String,
+    val topSongs: TopSongsContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class TopSongsContainerDto(
+    val song: List<SongDto>? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Instant Mix (getSimilarSongs / getSimilarSongs2 / getSongsByGenre)
+// ---------------------------------------------------------------------------
+
+data class SimilarSongsResponseDto(
+    @SerializedName("subsonic-response") val response: SimilarSongsBodyDto,
+)
+
+data class SimilarSongsBodyDto(
+    val status: String,
+    val version: String,
+    val similarSongs: SimilarSongsContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class SimilarSongsContainerDto(
+    val song: List<SongDto>? = null,
+)
+
+data class SimilarSongs2ResponseDto(
+    @SerializedName("subsonic-response") val response: SimilarSongs2BodyDto,
+)
+
+data class SimilarSongs2BodyDto(
+    val status: String,
+    val version: String,
+    val similarSongs2: SimilarSongs2ContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class SimilarSongs2ContainerDto(
+    val song: List<SongDto>? = null,
+)
+
+data class SongsByGenreResponseDto(
+    @SerializedName("subsonic-response") val response: SongsByGenreBodyDto,
+)
+
+data class SongsByGenreBodyDto(
+    val status: String,
+    val version: String,
+    val songsByGenre: SongsByGenreContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class SongsByGenreContainerDto(
+    val song: List<SongDto>? = null,
 )

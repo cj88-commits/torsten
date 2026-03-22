@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -54,6 +53,7 @@ import com.torsten.app.data.api.dto.PlaylistDto
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.LibraryTab
 import com.torsten.app.ui.common.LibraryTabRow
+import com.torsten.app.ui.common.shimmerBrush
 
 private fun formatDurationSecs(seconds: Int): String {
     return when {
@@ -116,7 +116,7 @@ fun PlaylistsScreen(
                     Text("Cancel")
                 }
             },
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = Color(0xFF1A1A1A),
         )
     }
 
@@ -153,8 +153,8 @@ fun PlaylistsScreen(
             )
 
             when {
-                state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color.White)
+                state.isLoading -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(4) { ShimmerPlaylistRow() }
                 }
                 state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -185,6 +185,42 @@ fun PlaylistsScreen(
 }
 
 @Composable
+private fun ShimmerPlaylistRow() {
+    val shimmer = shimmerBrush()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(shimmer),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.55f)
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.35f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+        }
+    }
+}
+
+@Composable
 private fun PlaylistRow(
     playlist: PlaylistDto,
     coverArtUrl: String?,
@@ -201,7 +237,7 @@ private fun PlaylistRow(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF1E1E1E)),
+                .background(Color(0xFF1A1A1A)),
             contentAlignment = Alignment.Center,
         ) {
             if (coverArtUrl != null) {

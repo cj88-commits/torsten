@@ -163,7 +163,7 @@ fun AlbumGridScreen(
         ModalBottomSheet(
             onDismissRequest = { showJumpSheet = false },
             sheetState = jumpSheetState,
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = Color(0xFF1A1A1A),
         ) {
             Text(
                 text = "Jump to",
@@ -222,7 +222,7 @@ fun AlbumGridScreen(
             SnackbarHost(snackbarHostState) { data ->
                 Snackbar(
                     snackbarData = data,
-                    containerColor = Color(0xFF1E1E1E),
+                    containerColor = Color(0xFF1A1A1A),
                     contentColor = Color.White,
                 )
             }
@@ -496,7 +496,7 @@ private fun FilterEmptyState(
 
 @Composable
 private fun OfflineBanner() {
-    Surface(color = Color(0xFF1E1E1E), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = Color(0xFF1A1A1A), modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

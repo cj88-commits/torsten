@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
@@ -68,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.data.db.entity.SongEntity
+import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.playback.PlaybackViewModel
@@ -92,6 +94,7 @@ fun AlbumDetailScreen(
     onNavigateUp: () -> Unit,
     onNavigateToArtist: (artistId: String) -> Unit,
     onAddToPlaylist: (songId: String) -> Unit = {},
+    onStartInstantMix: (seed: SongDto) -> Unit = {},
 ) {
     val album by viewModel.album.collectAsStateWithLifecycle()
     val songs by viewModel.songs.collectAsStateWithLifecycle()
@@ -210,7 +213,7 @@ fun AlbumDetailScreen(
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
             sheetState = contextSheetState,
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = Color(0xFF1A1A1A),
         ) {
             val song = contextSong!!
             Column(modifier = Modifier.padding(bottom = 24.dp)) {
@@ -253,6 +256,32 @@ fun AlbumDetailScreen(
                     Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Add to playlist", color = Color.White, modifier = Modifier.weight(1f))
+                }
+                TextButton(
+                    onClick = {
+                        val s = contextSong ?: return@TextButton
+                        val currentAlbum = album
+                        contextSong = null
+                        onStartInstantMix(
+                            SongDto(
+                                id = s.id,
+                                title = s.title,
+                                artist = currentAlbum?.artistName.orEmpty(),
+                                artistId = s.artistId.ifEmpty { currentAlbum?.artistId.orEmpty() },
+                                album = currentAlbum?.title.orEmpty(),
+                                albumId = s.albumId,
+                                duration = s.duration,
+                                coverArt = currentAlbum?.coverArtId,
+                                genre = currentAlbum?.genre,
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    Icon(Icons.Filled.Shuffle, null, tint = Color.White.copy(alpha = 0.7f))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Start instant mix", color = Color.White, modifier = Modifier.weight(1f))
                 }
             }
         }

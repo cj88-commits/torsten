@@ -51,7 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.torsten.app.BuildConfig
 
 private val TopBarBackground = Color(0xFF0A0A0A)
-private val DarkBackground = Color(0xFF141414)
+private val DarkBackground = Color(0xFF111111)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

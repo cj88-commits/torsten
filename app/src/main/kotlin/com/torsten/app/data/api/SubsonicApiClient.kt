@@ -276,6 +276,45 @@ class SubsonicApiClient(private val config: ServerConfig) {
     }
 
     // -------------------------------------------------------------------------
+    // Instant Mix
+    // -------------------------------------------------------------------------
+
+    /** Returns up to [count] artists similar to [artistId] via Last.fm (Navidrome/ID3 tags). */
+    suspend fun getSimilarArtists2(artistId: String, count: Int = 15): List<ArtistDto> {
+        val body = service.getSimilarArtists2(artistId, count).response
+        checkStatus(body.status, body.error?.message)
+        return body.similarArtists2?.artist.orEmpty()
+    }
+
+    /** Returns the top songs for [artistName] as ranked by Last.fm. */
+    suspend fun getTopSongs(artistName: String, count: Int = 5): List<SongDto> {
+        val body = service.getTopSongs(artistName, count).response
+        checkStatus(body.status, body.error?.message)
+        return body.topSongs?.song.orEmpty()
+    }
+
+    /** Returns songs similar to the given song (by song ID). */
+    suspend fun getSimilarSongs(songId: String, count: Int = 25): List<SongDto> {
+        val body = service.getSimilarSongs(songId, count).response
+        checkStatus(body.status, body.error?.message)
+        return body.similarSongs?.song.orEmpty()
+    }
+
+    /** Returns songs similar to the given artist (by artist ID, uses ID3/Last.fm tags). */
+    suspend fun getSimilarSongs2(artistId: String, count: Int = 25): List<SongDto> {
+        val body = service.getSimilarSongs2(artistId, count).response
+        checkStatus(body.status, body.error?.message)
+        return body.similarSongs2?.song.orEmpty()
+    }
+
+    /** Returns random songs from the given genre. */
+    suspend fun getSongsByGenre(genre: String, count: Int = 25, offset: Int = 0): List<SongDto> {
+        val body = service.getSongsByGenre(genre, count, offset).response
+        checkStatus(body.status, body.error?.message)
+        return body.songsByGenre?.song.orEmpty()
+    }
+
+    // -------------------------------------------------------------------------
     // OkHttp construction
     // -------------------------------------------------------------------------
 

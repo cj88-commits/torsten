@@ -13,23 +13,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,12 +42,13 @@ import com.torsten.app.data.api.dto.AlbumDto
 import com.torsten.app.data.api.dto.GenreDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.theme.TorstenColor
+import java.util.Calendar
 
 private val CardWidth   = 130.dp
 private val CardSpacing = 12.dp
 private val RowPadding  = 16.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -57,35 +57,49 @@ fun HomeScreen(
     onSeeAll: (listType: String, title: String) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val greeting = remember {
+        when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
+            in 5..11 -> "Good morning"
+            in 12..17 -> "Good afternoon"
+            else -> "Good evening"
+        }
+    }
 
-    Scaffold(
-        containerColor = DarkBackground,
-        topBar = {
-            TopAppBar(
-                title = { Text("Home", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0A0A0A)),
-            )
-        },
-    ) { innerPadding ->
+    Scaffold(containerColor = DarkBackground) { innerPadding ->
         when {
             state.error != null -> ErrorState(
                 message = state.error!!,
                 onRetry = viewModel::loadFeed,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .statusBarsPadding(),
             )
 
             else -> {
-                // Both loading and loaded share the same column structure so the
-                // skeleton placeholders animate naturally into real content.
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
+                        .statusBarsPadding()
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    Spacer(Modifier.height(8.dp))
+                    // ── Greeting header ──────────────────────────────────────
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = greeting,
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = RowPadding),
+                    )
+                    Text(
+                        text = "Torsten",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = RowPadding),
+                    )
+                    Spacer(Modifier.height(16.dp))
 
                     AlbumRow(
                         title          = "Recently Played",
@@ -152,7 +166,7 @@ private fun AlbumRow(
             Text(
                 text = "Nothing here yet",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8C8C8C),
+                color = TorstenColor.TextSecondary,
                 modifier = Modifier.padding(horizontal = RowPadding, vertical = 4.dp),
             )
         } else {
@@ -196,7 +210,7 @@ private fun GenreRow(
             Text(
                 text = "No genres found",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8C8C8C),
+                color = TorstenColor.TextSecondary,
                 modifier = Modifier.padding(horizontal = RowPadding, vertical = 4.dp),
             )
         } else {
@@ -215,7 +229,7 @@ private fun GenreRow(
                             )
                         },
                         colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = Color(0xFF1E1E1E),
+                            containerColor = TorstenColor.ElevatedSurface,
                         ),
                         border = SuggestionChipDefaults.suggestionChipBorder(
                             enabled = true,
@@ -293,7 +307,7 @@ private fun SectionHeading(text: String, onSeeAll: (() -> Unit)? = null) {
             TextButton(onClick = onSeeAll) {
                 Text(
                     text  = "See all",
-                    color = Color(0xFF8C8C8C),
+                    color = TorstenColor.TextSecondary,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -310,7 +324,7 @@ private fun SkeletonCard() {
             modifier = Modifier
                 .size(CardWidth)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF1E1E1E)),
+                .background(TorstenColor.ElevatedSurface),
         )
         Spacer(Modifier.height(6.dp))
         Box(
@@ -318,7 +332,7 @@ private fun SkeletonCard() {
                 .fillMaxWidth()
                 .height(13.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color(0xFF1E1E1E)),
+                .background(TorstenColor.ElevatedSurface),
         )
         Spacer(Modifier.height(4.dp))
         Box(
@@ -326,7 +340,7 @@ private fun SkeletonCard() {
                 .fillMaxWidth(0.7f)
                 .height(12.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color(0xFF1E1E1E)),
+                .background(TorstenColor.ElevatedSurface),
         )
     }
 }
@@ -338,7 +352,7 @@ private fun SkeletonPill() {
             .width(72.dp)
             .height(32.dp)
             .clip(RoundedCornerShape(50))
-            .background(Color(0xFF1E1E1E)),
+            .background(TorstenColor.ElevatedSurface),
     )
 }
 

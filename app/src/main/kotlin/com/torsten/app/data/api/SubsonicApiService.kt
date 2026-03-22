@@ -10,6 +10,11 @@ import com.torsten.app.data.api.dto.PingResponseDto
 import com.torsten.app.data.api.dto.PlaylistResponseDto
 import com.torsten.app.data.api.dto.PlaylistsResponseDto
 import com.torsten.app.data.api.dto.Search3ResponseDto
+import com.torsten.app.data.api.dto.SimilarArtists2ResponseDto
+import com.torsten.app.data.api.dto.SimilarSongsResponseDto
+import com.torsten.app.data.api.dto.SimilarSongs2ResponseDto
+import com.torsten.app.data.api.dto.SongsByGenreResponseDto
+import com.torsten.app.data.api.dto.TopSongsResponseDto
 import com.torsten.app.data.api.dto.StarResponseDto
 import retrofit2.http.GET
 import retrofit2.http.Query
@@ -114,4 +119,35 @@ internal interface SubsonicApiService {
 
     @GET("rest/deletePlaylist")
     suspend fun deletePlaylist(@Query("id") id: String): StarResponseDto
+
+    @GET("rest/getSimilarArtists2")
+    suspend fun getSimilarArtists2(
+        @Query("id") id: String,
+        @Query("count") count: Int = 20,
+    ): SimilarArtists2ResponseDto
+
+    @GET("rest/getTopSongs")
+    suspend fun getTopSongs(
+        @Query("artist") artist: String,
+        @Query("count") count: Int = 50,
+    ): TopSongsResponseDto
+
+    @GET("rest/getSimilarSongs")
+    suspend fun getSimilarSongs(
+        @Query("id") id: String,
+        @Query("count") count: Int = 25,
+    ): SimilarSongsResponseDto
+
+    @GET("rest/getSimilarSongs2")
+    suspend fun getSimilarSongs2(
+        @Query("id") id: String,
+        @Query("count") count: Int = 25,
+    ): SimilarSongs2ResponseDto
+
+    @GET("rest/getSongsByGenre")
+    suspend fun getSongsByGenre(
+        @Query("genre") genre: String,
+        @Query("count") count: Int = 25,
+        @Query("offset") offset: Int = 0,
+    ): SongsByGenreResponseDto
 }

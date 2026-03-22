@@ -1,5 +1,12 @@
 package com.torsten.app.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,6 +97,7 @@ import com.torsten.app.ui.settings.SettingsScreen
 import com.torsten.app.ui.settings.SettingsViewModel
 import com.torsten.app.ui.settings.SettingsViewModelFactory
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 // Routes where the bottom navigation bar is shown
 private val tabRoutes = setOf(
@@ -178,8 +186,12 @@ fun AppNavigation() {
         NavHost(
             navController = navController,
             startDestination = Screen.Settings.route,
-            // Only apply bottom padding here; each screen's Scaffold handles its own top (status bar) insets.
             modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
+            // Default: fade for tab-to-tab transitions
+            enterTransition = { fadeIn(animationSpec = tween(250)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(250)) },
+            popExitTransition = { fadeOut(animationSpec = tween(200)) },
         ) {
             composable(Screen.Home.route) {
                 val vm: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
@@ -212,11 +224,29 @@ fun AppNavigation() {
                     onGenreClick      = { genre ->
                         navController.navigate(Screen.Genre.createRoute(genre))
                     },
+                    onStartInstantMix = { seed ->
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            playbackViewModel.startInstantMix(seed, config)
+                        }
+                    },
                 )
             }
 
             composable(Screen.Queue.route) {
-                QueueScreen(playbackViewModel = playbackViewModel)
+                QueueScreen(
+                    playbackViewModel = playbackViewModel,
+                    onNavigateToLibrary = {
+                        navController.navigate(Screen.Albums.route) {
+                            popUpTo(Screen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
             }
 
             composable(Screen.Settings.route) { settingsEntry ->
@@ -354,6 +384,10 @@ fun AppNavigation() {
                     navArgument("albumId") { type = NavType.StringType },
                     navArgument("title") { type = NavType.StringType; defaultValue = "" },
                 ),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeIn(tween(200)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(tween(200)) },
             ) { backStackEntry ->
                 val albumId = backStackEntry.arguments?.getString("albumId").orEmpty()
                 val initialTitle = backStackEntry.arguments?.getString("title").orEmpty()
@@ -367,12 +401,25 @@ fun AppNavigation() {
                         navController.navigate(Screen.ArtistDetail.createRoute(artistId))
                     },
                     onAddToPlaylist = { songId -> playlistPickerSongId = songId },
+                    onStartInstantMix = { seed ->
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            playbackViewModel.startInstantMix(seed, config)
+                        }
+                    },
                 )
             }
 
             composable(
                 route = Screen.ArtistDetail.route,
                 arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeIn(tween(200)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(tween(200)) },
             ) { backStackEntry ->
                 val artistId = backStackEntry.arguments?.getString("artistId").orEmpty()
                 val vm: ArtistDetailViewModel = viewModel(factory = ArtistDetailViewModelFactory(context, artistId))
@@ -391,6 +438,10 @@ fun AppNavigation() {
                     navArgument("playlistId") { type = NavType.StringType },
                     navArgument("name") { type = NavType.StringType; defaultValue = "" },
                 ),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeIn(tween(200)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(tween(200)) },
             ) { backStackEntry ->
                 val playlistId = backStackEntry.arguments?.getString("playlistId").orEmpty()
                 val initialName = backStackEntry.arguments?.getString("name").orEmpty()
@@ -401,12 +452,25 @@ fun AppNavigation() {
                     initialName = initialName,
                     onNavigateUp = { navController.navigateUp() },
                     onAddToPlaylist = { songId -> playlistPickerSongId = songId },
+                    onStartInstantMix = { seed ->
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            playbackViewModel.startInstantMix(seed, config)
+                        }
+                    },
                 )
             }
 
             composable(
                 route = Screen.Genre.route,
                 arguments = listOf(navArgument("genreName") { type = NavType.StringType }),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeIn(tween(200)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(tween(200)) },
             ) { backStackEntry ->
                 val genre = backStackEntry.arguments?.getString("genreName").orEmpty()
                 val vm: GenreViewModel = viewModel(factory = GenreViewModelFactory(context, genre))
@@ -426,6 +490,10 @@ fun AppNavigation() {
                     navArgument("listType") { type = NavType.StringType },
                     navArgument("title") { type = NavType.StringType; defaultValue = "" },
                 ),
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeIn(tween(200)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(tween(200)) },
             ) { backStackEntry ->
                 val listType = backStackEntry.arguments?.getString("listType").orEmpty()
                 val title = backStackEntry.arguments?.getString("title").orEmpty()
@@ -440,7 +508,13 @@ fun AppNavigation() {
                 )
             }
 
-            composable(Screen.NowPlaying.route) {
+            composable(
+                Screen.NowPlaying.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(350)) },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300)) },
+                popEnterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(350)) },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300)) },
+            ) {
                 NowPlayingScreen(
                     playbackViewModel = playbackViewModel,
                     isOnline = isOnline,
@@ -461,6 +535,9 @@ fun AppNavigation() {
                             restoreState = true
                         }
                     },
+                    onStartInstantMix = {
+                        playbackViewModel.startInstantMixForCurrentSong()
+                    },
                 )
             }
         }
@@ -478,7 +555,7 @@ private fun PlaylistPickerSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1E1E1E),
+        containerColor = Color(0xFF1A1A1A),
     ) {
         Text(
             "Add to playlist",
@@ -513,11 +590,16 @@ private fun AppBottomBar(
     val itemColors = NavigationBarItemDefaults.colors(
         selectedIconColor = Color.White,
         selectedTextColor = Color.White,
-        unselectedIconColor = Color.White.copy(alpha = 0.5f),
-        unselectedTextColor = Color.White.copy(alpha = 0.5f),
-        indicatorColor = Color(0xFF1E1E1E),
+        unselectedIconColor = Color(0xFF555555),
+        unselectedTextColor = Color(0xFF555555),
+        indicatorColor = Color.Transparent,
     )
 
+    Column {
+    HorizontalDivider(
+        thickness = 1.dp,
+        color = Color(0xFF111111),
+    )
     NavigationBar(containerColor = Color(0xFF0A0A0A)) {
         // ── Home ──────────────────────────────────────────────────────────────
         NavigationBarItem(
@@ -608,4 +690,5 @@ private fun AppBottomBar(
             colors = itemColors,
         )
     }
+    } // end Column wrapping NavigationBar + divider
 }

@@ -73,7 +73,14 @@
       "Bash(./gradlew assembleDebug 2>&1 | grep -E \"\\(error:|warning:|BUILD|Task :app:compile\\)\" | head -40)",
       "Bash(./gradlew assembleDebug 2>&1 | grep -E \"^e:|error:\" | head -30)",
       "Bash(./gradlew assembleDebug 2>&1 | grep -E \"^e:|error:|warning:|BUILD\" | head -40)",
-      "Bash(./gradlew assembleDebug 2>&1 | grep \"^w:\" | head -20)"
+      "Bash(./gradlew assembleDebug 2>&1 | grep \"^w:\" | head -20)",
+      "Bash(./gradlew assembleDebug 2>&1 | grep -E \"^e:|error:|warning:|BUILD|FAILED\" | head -30)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:www.subsonic.org)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(./gradlew assembleDebug)"
     ]
   }
 }

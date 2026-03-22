@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -87,6 +88,7 @@ fun PlaylistDetailScreen(
     initialName: String = "",
     onNavigateUp: () -> Unit,
     onAddToPlaylist: (songId: String) -> Unit,
+    onStartInstantMix: (seed: SongDto) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -106,7 +108,7 @@ fun PlaylistDetailScreen(
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
             sheetState = contextSheetState,
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = Color(0xFF1A1A1A),
         ) {
             val song = contextSong!!
             val idx = contextSongIndex
@@ -150,6 +152,21 @@ fun PlaylistDetailScreen(
                     Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
                     Spacer(Modifier.width(12.dp))
                     Text("Add to playlist", color = Color.White, modifier = Modifier.weight(1f))
+                }
+
+                // Start instant mix
+                TextButton(
+                    onClick = {
+                        val s = contextSong ?: return@TextButton
+                        contextSong = null
+                        onStartInstantMix(s)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    Icon(Icons.Filled.Shuffle, null, tint = Color.White.copy(alpha = 0.7f))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Start instant mix", color = Color.White, modifier = Modifier.weight(1f))
                 }
 
                 // Remove from playlist
@@ -224,7 +241,7 @@ fun PlaylistDetailScreen(
                                 modifier = Modifier
                                     .size(120.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF1E1E1E)),
+                                    .background(Color(0xFF1A1A1A)),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 val artUrl = playlist.coverArt?.let { viewModel.getCoverArtUrl(it, 300) }

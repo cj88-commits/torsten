@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -79,10 +81,12 @@ fun NowPlayingScreen(
     onNavigateToArtist: (artistId: String) -> Unit,
     onNavigateToAlbum: (albumId: String) -> Unit,
     onNavigateToQueue: () -> Unit = {},
+    onStartInstantMix: () -> Unit = {},
 ) {
     val state by playbackViewModel.state.collectAsStateWithLifecycle()
     val currentSongStarred by playbackViewModel.currentSongStarred.collectAsStateWithLifecycle()
     val qualityBadge by playbackViewModel.qualityBadge.collectAsStateWithLifecycle()
+    val isMixLoading by playbackViewModel.isMixLoading.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -130,6 +134,23 @@ fun NowPlayingScreen(
                                 )
                                 .padding(horizontal = 6.dp, vertical = 3.dp),
                         )
+                    }
+                    if (isMixLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(horizontal = 12.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        IconButton(onClick = onStartInstantMix) {
+                            Icon(
+                                imageVector = Icons.Filled.Shuffle,
+                                contentDescription = "Instant mix",
+                                tint = Color.White,
+                            )
+                        }
                     }
                     IconButton(onClick = onNavigateToQueue) {
                         Icon(

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -73,7 +74,7 @@ import com.torsten.app.ui.playback.PlaybackViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-private val SurfaceVariant = Color(0xFF1E1E1E)
+private val SurfaceVariant = Color(0xFF1A1A1A)
 private val TextSecondary  = Color(0xFF8C8C8C)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -85,6 +86,7 @@ fun SearchScreen(
     onArtistClick: (artistId: String) -> Unit,
     onAddToPlaylist: (songId: String) -> Unit = {},
     onGenreClick: (genre: String) -> Unit = {},
+    onStartInstantMix: (seed: SongDto) -> Unit = {},
 ) {
     val query   by viewModel.query.collectAsStateWithLifecycle()
     val results by viewModel.results.collectAsStateWithLifecycle()
@@ -107,7 +109,7 @@ fun SearchScreen(
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
             sheetState = contextSheetState,
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = Color(0xFF1A1A1A),
         ) {
             val song = contextSong!!
             Column(
@@ -149,6 +151,19 @@ fun SearchScreen(
                     Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
                     Spacer(Modifier.width(12.dp))
                     Text("Add to playlist", color = Color.White, modifier = Modifier.weight(1f))
+                }
+                TextButton(
+                    onClick = {
+                        val s = contextSong ?: return@TextButton
+                        contextSong = null
+                        onStartInstantMix(s)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    Icon(Icons.Filled.Shuffle, null, tint = Color.White.copy(alpha = 0.7f))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Start instant mix", color = Color.White, modifier = Modifier.weight(1f))
                 }
             }
         }

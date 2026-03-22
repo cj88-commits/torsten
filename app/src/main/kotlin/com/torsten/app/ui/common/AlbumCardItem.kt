@@ -41,7 +41,7 @@ import com.torsten.app.data.db.entity.DownloadState
 // ─── Palette ──────────────────────────────────────────────────────────────────
 
 val DarkBackground = Color(0xFF0A0A0A)
-private val CardBackground = Color(0xFF141414)
+private val CardBackground = Color(0xFF111111)
 private val PlaceholderIconColor = Color(0xFF333333)
 private val DownloadBadgeColor = Color(0xFF4CAF50)
 

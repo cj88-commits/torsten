@@ -15,6 +15,7 @@ import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.data.queue.QueueManager
+import com.torsten.app.data.repository.InstantMixRepository
 import com.torsten.app.data.queue.QueueTrack
 import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.datastore.StreamingConfig
@@ -93,6 +94,9 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
 
     private val _snackbarEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
+
+    private val _isMixLoading = MutableStateFlow(false)
+    val isMixLoading: StateFlow<Boolean> = _isMixLoading.asStateFlow()
 
     private val _currentSongId = MutableStateFlow("")
 
@@ -469,6 +473,121 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
         )
         val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
         playAlbum(listOf(stubSong), stubAlbum, 0, config, coverArtUrl)
+    }
+
+    // ─── Instant Mix ──────────────────────────────────────────────────────────
+
+    fun startInstantMix(seedSong: SongDto, config: ServerConfig) {
+        if (_isMixLoading.value) return
+        _snackbarEvent.tryEmit("Building mix…")
+        viewModelScope.launch {
+            _isMixLoading.value = true
+            try {
+                val mix = withContext(Dispatchers.IO) {
+                    InstantMixRepository(config).buildMix(seedSong)
+                }
+                playMix(mix, config)
+                _snackbarEvent.tryEmit("Mix ready — ${mix.size} tracks")
+            } catch (e: Exception) {
+                Timber.tag("[InstantMix]").e(e, "Failed to build instant mix for %s", seedSong.id)
+                _snackbarEvent.tryEmit("Couldn't build mix")
+            } finally {
+                _isMixLoading.value = false
+            }
+        }
+    }
+
+    fun startInstantMixForCurrentSong() {
+        val songId = _currentSongId.value.takeIf { it.isNotEmpty() } ?: return
+        val s = _state.value
+        val seedSong = SongDto(
+            id = songId,
+            title = s.currentSongTitle,
+            artist = s.artistName,
+            artistId = s.artistId,
+            album = s.albumTitle,
+            albumId = s.albumId,
+            coverArt = s.coverArtId,
+            genre = null,
+        )
+        viewModelScope.launch {
+            val config = ServerConfigStore(context).serverConfig.first()
+            if (!config.isConfigured) return@launch
+            startInstantMix(seedSong, config)
+        }
+    }
+
+    private fun playMix(songs: List<SongDto>, config: ServerConfig) {
+        val controller = mediaController ?: run {
+            Timber.tag("[Player]").w("playMix called before MediaController connected")
+            return
+        }
+        val isOnline = connectivityMonitor.isOnline.value
+        val isOnWifi = connectivityMonitor.isOnWifi.value
+        val now = System.currentTimeMillis()
+
+        val allMediaItems = songs.map { song ->
+            val albumId = song.albumId.orEmpty().ifEmpty { "mix_${song.id}" }
+            val stubAlbum = AlbumEntity(
+                id = albumId,
+                title = song.album.orEmpty(),
+                artistId = song.artistId.orEmpty(),
+                artistName = song.artist.orEmpty(),
+                year = song.year,
+                genre = null,
+                songCount = 1,
+                duration = song.duration ?: 0,
+                coverArtId = song.coverArt,
+                starred = false,
+                downloadState = DownloadState.NONE,
+                downloadProgress = 0,
+                downloadedAt = null,
+                lastUpdated = now,
+            )
+            val stubSong = SongEntity(
+                id = song.id,
+                albumId = albumId,
+                artistId = song.artistId.orEmpty(),
+                title = song.title,
+                trackNumber = song.track ?: 1,
+                discNumber = song.discNumber ?: 1,
+                duration = song.duration ?: 0,
+                bitRate = song.bitRate,
+                suffix = song.suffix,
+                contentType = song.contentType,
+                starred = song.starred != null,
+                localFilePath = null,
+                lastUpdated = now,
+            )
+            val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
+            PlaybackService.MediaItemBuilder.buildMediaItems(
+                songs = listOf(stubSong),
+                album = stubAlbum,
+                config = config,
+                coverArtUrl = coverArtUrl,
+                isOnWifi = isOnWifi,
+                isOnline = isOnline,
+                artworkBitmap = null,
+            ).first()
+        }
+
+        val bgTracks = songs.map { song ->
+            val albumId = song.albumId.orEmpty().ifEmpty { "mix_${song.id}" }
+            QueueTrack(
+                songId = song.id,
+                title = song.title,
+                artistName = song.artist.orEmpty(),
+                albumTitle = song.album.orEmpty(),
+                coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) },
+                durationMs = (song.duration ?: 0).toLong() * 1000L,
+            )
+        }
+
+        controller.setMediaItems(allMediaItems, 0, 0L)
+        controller.playWhenReady = true
+        controller.prepare()
+        queueManager.setBackgroundSequence(bgTracks, 0)
+        Timber.tag("[Player]").d("playMix: %d tracks, seed=%s", songs.size, songs.firstOrNull()?.id)
     }
 
     // ─── Queue management ─────────────────────────────────────────────────────

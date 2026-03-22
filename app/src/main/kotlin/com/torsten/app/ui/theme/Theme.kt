@@ -7,8 +7,8 @@ import androidx.compose.ui.graphics.Color
 
 private val TorstenColorScheme = darkColorScheme(
     background = Color(0xFF0A0A0A),
-    surface = Color(0xFF141414),
-    surfaceVariant = Color(0xFF1E1E1E),
+    surface = Color(0xFF111111),
+    surfaceVariant = Color(0xFF1A1A1A),
     primary = Color(0xFFFFFFFF),
     onPrimary = Color(0xFF000000),
     onBackground = Color(0xFFFFFFFF),

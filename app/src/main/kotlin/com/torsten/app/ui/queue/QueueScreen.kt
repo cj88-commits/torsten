@@ -3,6 +3,7 @@ package com.torsten.app.ui.queue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
@@ -71,7 +73,10 @@ private fun formatDurationMs(durationMs: Long): String {
 }
 
 @Composable
-fun QueueScreen(playbackViewModel: PlaybackViewModel) {
+fun QueueScreen(
+    playbackViewModel: PlaybackViewModel,
+    onNavigateToLibrary: () -> Unit = {},
+) {
     val playbackState by playbackViewModel.state.collectAsStateWithLifecycle()
     val priorityQueue by playbackViewModel.priorityQueue.collectAsStateWithLifecycle()
     val backgroundSequence by playbackViewModel.backgroundSequence.collectAsStateWithLifecycle()
@@ -86,12 +91,26 @@ fun QueueScreen(playbackViewModel: PlaybackViewModel) {
             .statusBarsPadding(),
     ) {
         if (isEmpty) {
-            Text(
-                text = "Nothing is playing",
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextSecondary,
+            Column(
                 modifier = Modifier.align(Alignment.Center),
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.25f),
+                    modifier = Modifier.size(56.dp),
+                )
+                Text(
+                    text = "Nothing queued",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TextSecondary,
+                )
+                TextButton(onClick = onNavigateToLibrary) {
+                    Text("Browse music", color = Color.White)
+                }
+            }
             return@Box
         }
 

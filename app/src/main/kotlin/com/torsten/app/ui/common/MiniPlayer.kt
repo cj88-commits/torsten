@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.torsten.app.ui.theme.TorstenColor
 import coil3.compose.AsyncImage
 import com.torsten.app.ui.playback.PlaybackUiState
 
@@ -58,9 +61,13 @@ fun MiniPlayer(
                 .fillMaxWidth()
                 .clickable(onClick = onTap),
         ) {
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = TorstenColor.Surface,
+            )
             Row(
                 modifier = Modifier
-                    .background(Color(0xFF0A0A0A))
+                    .background(TorstenColor.ElevatedSurface)
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -72,8 +79,8 @@ fun MiniPlayer(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(6.dp)),
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(8.dp)),
                 )
 
                 Spacer(modifier = Modifier.width(12.dp))
@@ -84,12 +91,12 @@ fun MiniPlayer(
                         text = state.currentSongTitle,
                         color = Color.White,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.basicMarquee(),
                     )
                     Text(
                         text = state.artistName,
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = TorstenColor.TextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall,
@@ -113,7 +120,7 @@ fun MiniPlayer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp),
-                color = Color(0xFF7C6FFF),
+                color = TorstenColor.Accent,
                 trackColor = Color.White.copy(alpha = 0.15f),
             )
         }
