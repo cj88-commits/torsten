@@ -6,6 +6,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -85,21 +87,34 @@ fun MiniPlayer(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Song info
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = state.currentSongTitle,
-                        color = Color.White,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.basicMarquee(),
-                    )
-                    Text(
-                        text = state.artistName,
-                        color = TorstenColor.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
+                // Song info with right-edge fade for long titles
+                Box(modifier = Modifier.weight(1f)) {
+                    Column {
+                        Text(
+                            text = state.currentSongTitle,
+                            color = Color.White,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.basicMarquee(),
+                        )
+                        Text(
+                            text = state.artistName,
+                            color = TorstenColor.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    // Right-edge gradient fade so titles don't hard-clip before the play button
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    0.7f to Color.Transparent,
+                                    1.0f to TorstenColor.ElevatedSurface,
+                                ),
+                            ),
                     )
                 }
 

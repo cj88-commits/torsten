@@ -511,6 +511,7 @@ class PlaybackService : MediaSessionService() {
 
                 val extras = Bundle().apply {
                     putString("albumId", album.id)
+                    putString("albumTitle", album.title)
                     putString("artistId", album.artistId)
                     putString("songTitle", song.title)
                     putString("artistName", album.artistName)

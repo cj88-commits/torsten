@@ -20,6 +20,7 @@ import com.torsten.app.ui.theme.TorstenColor
 fun SectionHeader(
     title: String,
     modifier: Modifier = Modifier,
+    actionLabel: String = "See all",
     onSeeAll: (() -> Unit)? = null,
 ) {
     Row(
@@ -38,7 +39,7 @@ fun SectionHeader(
         if (onSeeAll != null) {
             TextButton(onClick = onSeeAll) {
                 Text(
-                    text = "See all",
+                    text = actionLabel,
                     color = TorstenColor.TextSecondary,
                     style = MaterialTheme.typography.labelMedium,
                 )

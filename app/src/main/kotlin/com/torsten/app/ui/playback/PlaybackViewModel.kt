@@ -228,6 +228,11 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
 
         // Update song ID for star state observation
         _currentSongId.value = currentItem?.mediaId ?: ""
+        Timber.tag("[Player]").d(
+            "Track: %s | Artist: %s | Album: %s",
+            currentItem?.mediaId, currentItem?.mediaMetadata?.extras?.getString("artistName"),
+            currentItem?.mediaMetadata?.extras?.getString("albumTitle"),
+        )
 
         // Build song title and track number lists from the timeline
         // Use extras for title/artist: in-band audio metadata (ID3/Vorbis) is merged into
@@ -242,6 +247,9 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             ?: ""
         val artistId = extras?.getString("artistId") ?: ""
         val albumId = extras?.getString("albumId") ?: ""
+        val albumTitleFromExtras = extras?.getString("albumTitle")
+            ?: metadata?.albumTitle?.toString()
+            ?: ""
         val coverArtUrl = extras?.getString("coverArtUrl")
         val coverArtId = extras?.getString("coverArtId")
 
@@ -268,7 +276,7 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 currentSongTitle = currentSongTitle,
                 artistName = artistName,
                 artistId = artistId,
-                albumTitle = metadata?.albumTitle?.toString() ?: "",
+                albumTitle = albumTitleFromExtras,
                 albumId = albumId,
                 artworkUri = metadata?.artworkUri,
                 coverArtUrl = coverArtUrl,

@@ -59,13 +59,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.coverArtImageRequest
 import com.torsten.app.ui.playback.PlaybackUiState
 import com.torsten.app.ui.playback.PlaybackViewModel
+import com.torsten.app.ui.theme.Spacing
+import com.torsten.app.ui.theme.TorstenColor
 
 private fun formatTime(ms: Long): String {
     val s = ms / 1000
@@ -224,12 +228,12 @@ private fun NowPlayingControls(
             .background(DarkBackground)
             .padding(horizontal = 16.dp),
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(Spacing.sectionGap))
         // Album title — tappable
         Text(
             text = state.albumTitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            color = TorstenColor.TextTertiary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clickable(
@@ -244,7 +248,8 @@ private fun NowPlayingControls(
         ) {
             Text(
                 text = state.currentSongTitle,
-                style = MaterialTheme.typography.headlineMedium,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
@@ -268,8 +273,8 @@ private fun NowPlayingControls(
         // Artist name — tappable
         Text(
             text = state.artistName,
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White.copy(alpha = 0.6f),
+            fontSize = 15.sp,
+            color = TorstenColor.TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clickable(
@@ -296,11 +301,11 @@ private fun NowPlayingControls(
                     modifier = Modifier.size(36.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(24.dp))
             FilledIconButton(
                 onClick = onPlayPause,
                 modifier = Modifier.size(64.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = Color.White,
                     contentColor = Color.Black,
@@ -312,7 +317,7 @@ private fun NowPlayingControls(
                     modifier = Modifier.size(36.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(24.dp))
             IconButton(onClick = onNext) {
                 Icon(
                     imageVector = Icons.Filled.SkipNext,
@@ -363,7 +368,7 @@ private fun SeekBar(
             thumb = {
                 Box(
                     modifier = Modifier
-                        .size(12.dp)
+                        .size(14.dp)
                         .background(Color.White, CircleShape),
                 )
             },
@@ -377,7 +382,7 @@ private fun SeekBar(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(2.dp)),
+                            .background(TorstenColor.ElevatedSurface, RoundedCornerShape(2.dp)),
                     )
                     // buffered
                     if (bufferedFraction > 0f) {
@@ -406,12 +411,12 @@ private fun SeekBar(
             Text(
                 text = formatTime(state.positionMs),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.5f),
+                color = TorstenColor.TextSecondary,
             )
             Text(
                 text = formatTime(state.durationMs),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.5f),
+                color = TorstenColor.TextSecondary,
             )
         }
     }

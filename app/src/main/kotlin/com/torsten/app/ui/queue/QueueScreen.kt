@@ -35,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,8 +57,11 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.data.queue.QueueTrack
+import com.torsten.app.ui.common.EmptyState
+import com.torsten.app.ui.common.SectionHeader
 import com.torsten.app.ui.playback.PlaybackUiState
 import com.torsten.app.ui.playback.PlaybackViewModel
+import com.torsten.app.ui.theme.TorstenColor
 import kotlin.math.roundToInt
 
 private val DarkBg = Color(0xFF0A0A0A)
@@ -91,26 +93,14 @@ fun QueueScreen(
             .statusBarsPadding(),
     ) {
         if (isEmpty) {
-            Column(
+            EmptyState(
+                message = "Nothing queued",
+                icon = Icons.AutoMirrored.Filled.QueueMusic,
+                subtitle = "Long press any track to add it",
+                actionLabel = "Browse music",
+                onAction = onNavigateToLibrary,
                 modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.25f),
-                    modifier = Modifier.size(56.dp),
-                )
-                Text(
-                    text = "Nothing queued",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = TextSecondary,
-                )
-                TextButton(onClick = onNavigateToLibrary) {
-                    Text("Browse music", color = Color.White)
-                }
-            }
+            )
             return@Box
         }
 
@@ -142,26 +132,12 @@ fun QueueScreen(
             // ── Up Next (priority queue) ──────────────────────────────────────
             if (priorityQueue.isNotEmpty()) {
                 item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 8.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Up Next",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { playbackViewModel.clearPriorityQueue() }) {
-                            Text(
-                                text = "Clear",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = TextSecondary,
-                            )
-                        }
-                    }
+                    SectionHeader(
+                        title = "Up Next",
+                        actionLabel = "Clear",
+                        onSeeAll = { playbackViewModel.clearPriorityQueue() },
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
 
                 // Nested Column for drag-to-reorder (priority queue is typically small)
@@ -179,29 +155,12 @@ fun QueueScreen(
                 item {
                     HorizontalDivider(
                         modifier = Modifier.padding(top = 8.dp),
-                        color = Color.White.copy(alpha = 0.08f),
+                        color = TorstenColor.Surface,
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Playing from",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(end = 6.dp),
-                        )
-                        Text(
-                            text = playbackState.albumTitle.ifEmpty { "album" },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+                    SectionHeader(
+                        title = "Playing from",
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
 
                 itemsIndexed(
@@ -236,7 +195,7 @@ private fun NowPlayingCard(state: PlaybackUiState, modifier: Modifier = Modifier
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.06f)),
                 ) {
                     if (state.coverArtUrl != null) {
@@ -491,7 +450,8 @@ private fun BackgroundTrackRow(
     isCurrent: Boolean,
     onClick: () -> Unit,
 ) {
-    val contentAlpha = if (isCurrent) 1f else 0.4f
+    val titleColor = if (isCurrent) Color.White else TorstenColor.TextTertiary
+    val metaColor = if (isCurrent) TorstenColor.TextSecondary else TorstenColor.TextTertiary
 
     Row(
         modifier = Modifier
@@ -516,7 +476,7 @@ private fun BackgroundTrackRow(
             Text(
                 text = track.title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = contentAlpha),
+                color = titleColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -524,7 +484,7 @@ private fun BackgroundTrackRow(
                 Text(
                     text = track.artistName,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary.copy(alpha = contentAlpha),
+                    color = metaColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -535,7 +495,7 @@ private fun BackgroundTrackRow(
             Text(
                 text = formatDurationMs(track.durationMs),
                 style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary.copy(alpha = contentAlpha),
+                color = metaColor,
                 modifier = Modifier.padding(start = 8.dp),
             )
         }

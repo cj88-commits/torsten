@@ -17,7 +17,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Download
@@ -32,7 +34,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -414,6 +415,7 @@ fun AlbumGridScreen(
 
 // ─── Sort bar ─────────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SortBar(
     sortOrder: AlbumSortOrder,
@@ -431,18 +433,30 @@ private fun SortBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box {
-            OutlinedButton(onClick = { expanded = true }) {
-                Text(
-                    text = "Sort: ${sortOrder.label}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Icon(
-                    Icons.Filled.ArrowDropDown,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
+            Surface(
+                onClick = { expanded = true },
+                shape = RoundedCornerShape(50),
+                color = Color(0xFF111111),
+                border = BorderStroke(1.dp, Color(0xFF1A1A1A)),
+                modifier = Modifier.height(32.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "Sort: ${sortOrder.label}",
+                        color = Color(0xFF8C8C8C),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        contentDescription = null,
+                        tint = Color(0xFF8C8C8C),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 AlbumSortOrder.entries.forEach { order ->
@@ -455,12 +469,23 @@ private fun SortBar(
         }
 
         if (jumpToLabel != null) {
-            OutlinedButton(onClick = onJumpToClick) {
-                Text(
-                    text = "Jump to: $jumpToLabel",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                )
+            Surface(
+                onClick = onJumpToClick,
+                shape = RoundedCornerShape(50),
+                color = Color(0xFF111111),
+                border = BorderStroke(1.dp, Color(0xFF1A1A1A)),
+                modifier = Modifier.height(32.dp),
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Jump to: $jumpToLabel",
+                        color = Color(0xFF8C8C8C),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }
