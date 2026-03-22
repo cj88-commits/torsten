@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,15 +25,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +74,10 @@ import coil3.compose.AsyncImage
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.common.EmptyState
 import com.torsten.app.ui.playback.PlaybackViewModel
+import com.torsten.app.ui.theme.Radius
+import com.torsten.app.ui.theme.TorstenColor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -98,9 +107,37 @@ fun PlaylistDetailScreen(
     var contextSong by remember { mutableStateOf<SongDto?>(null) }
     var contextSongIndex by remember { mutableIntStateOf(-1) }
     val contextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameValue by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         viewModel.snackbar.collect { snackbarHostState.showSnackbar(it) }
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename playlist") },
+            text = {
+                OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it },
+                    singleLine = true,
+                    label = { Text("Name") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.renamePlaylist(renameValue)
+                        showRenameDialog = false
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 
     // Context menu bottom sheet
@@ -108,7 +145,8 @@ fun PlaylistDetailScreen(
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
             sheetState = contextSheetState,
-            containerColor = Color(0xFF1A1A1A),
+            containerColor = TorstenColor.Surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         ) {
             val song = contextSong!!
             val idx = contextSongIndex
@@ -178,9 +216,9 @@ fun PlaylistDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
                 ) {
-                    Icon(Icons.Filled.Delete, null, tint = Color(0xFFEF5350))
+                    Icon(Icons.Filled.Delete, null, tint = TorstenColor.Error)
                     Spacer(Modifier.width(12.dp))
-                    Text("Remove from playlist", color = Color(0xFFEF5350), modifier = Modifier.weight(1f))
+                    Text("Remove from playlist", color = TorstenColor.Error, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -234,55 +272,130 @@ fun PlaylistDetailScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(top = 8.dp, bottom = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Box(
+                            // Centered square art, full width minus 40dp padding, max 280dp
+                            BoxWithConstraints(
                                 modifier = Modifier
-                                    .size(120.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF1A1A1A)),
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                val artUrl = playlist.coverArt?.let { viewModel.getCoverArtUrl(it, 300) }
-                                if (artUrl != null) {
-                                    AsyncImage(
-                                        model = artUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                } else {
-                                    Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(48.dp))
-                                }
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            Text(playlist.name, style = MaterialTheme.typography.titleLarge, color = Color.White)
-                            Spacer(Modifier.height(4.dp))
-                            val meta = buildString {
-                                append("${tracks.size} tracks")
-                                if (playlist.duration > 0) append(" · ${formatDuration(playlist.duration)}")
-                            }
-                            Text(meta, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
-
-                            if (tracks.isNotEmpty()) {
-                                Spacer(Modifier.height(16.dp))
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            val config = viewModel.getServerConfig().first()
-                                            playPlaylist(tracks, playlist.id, playlist.name, playlist.coverArt, config, viewModel, playbackViewModel)
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                                val artSize = minOf(maxWidth, 280.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(artSize)
+                                        .clip(RoundedCornerShape(Radius.card))
+                                        .background(TorstenColor.ElevatedSurface),
+                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Play", color = Color.Black)
+                                    val artUrl = playlist.coverArt?.let { viewModel.getCoverArtUrl(it, 600) }
+                                    if (artUrl != null) {
+                                        AsyncImage(
+                                            model = artUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    } else {
+                                        Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(64.dp))
+                                    }
                                 }
                             }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            // Metadata column
+                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                                // Playlist name + edit button
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = playlist.name,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = Color.White,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            renameValue = playlist.name
+                                            showRenameDialog = true
+                                        },
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = "Rename playlist",
+                                            tint = Color.White.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(4.dp))
+
+                                // Metadata row: tracks · duration
+                                val meta = buildString {
+                                    append("${tracks.size} ${if (tracks.size == 1) "track" else "tracks"}")
+                                    if (playlist.duration > 0) append(" · ${formatDuration(playlist.duration)}")
+                                }
+                                Text(meta, style = MaterialTheme.typography.bodySmall, color = TorstenColor.TextTertiary)
+
+                                if (tracks.isNotEmpty()) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                scope.launch {
+                                                    val config = viewModel.getServerConfig().first()
+                                                    playPlaylist(tracks, playlist.id, playlist.name, playlist.coverArt, config, viewModel, playbackViewModel)
+                                                }
+                                            },
+                                            modifier = Modifier.height(40.dp),
+                                            shape = RoundedCornerShape(50),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                            contentPadding = PaddingValues(horizontal = 16.dp),
+                                        ) {
+                                            Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Play", color = Color.Black)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    val config = viewModel.getServerConfig().first()
+                                                    playPlaylist(tracks.shuffled(), playlist.id, playlist.name, playlist.coverArt, config, viewModel, playbackViewModel)
+                                                }
+                                            },
+                                            modifier = Modifier.height(40.dp),
+                                            shape = RoundedCornerShape(50),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                                            contentPadding = PaddingValues(horizontal = 16.dp),
+                                        ) {
+                                            Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Shuffle")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Empty state
+                    if (tracks.isEmpty()) {
+                        item {
+                            EmptyState(
+                                message = "No tracks yet",
+                                subtitle = "Add tracks from albums or search results",
+                                modifier = Modifier.height(280.dp),
+                            )
                         }
                     }
 
@@ -407,7 +520,7 @@ private fun SwipeToRemoveTrackRow(
                 .fillMaxWidth()
                 .background(DarkBackground)
                 .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-                .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

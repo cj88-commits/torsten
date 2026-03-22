@@ -35,6 +35,12 @@ class PlaylistRepository(private val configStore: ServerConfigStore) {
         )
     }
 
+    suspend fun renamePlaylist(playlistId: String, name: String) {
+        runCatching { client().renamePlaylist(playlistId, name) }
+            .onFailure { Timber.tag("[Playlists]").e(it, "renamePlaylist failed") }
+            .getOrThrow()
+    }
+
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String) {
         runCatching { client().addTrackToPlaylist(playlistId, trackId) }
             .onFailure { Timber.tag("[Playlists]").e(it, "addTrack failed") }

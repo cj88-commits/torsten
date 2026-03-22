@@ -63,6 +63,20 @@ class PlaylistDetailViewModel(
         }
     }
 
+    fun renamePlaylist(name: String) {
+        val trimmed = name.trim().ifEmpty { return }
+        val current = _state.value.playlist ?: return
+        _state.value = _state.value.copy(playlist = current.copy(name = trimmed))
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { repository.renamePlaylist(playlistId, trimmed) }
+                .onFailure { e ->
+                    Timber.tag("[Playlists]").e(e, "renamePlaylist failed")
+                    loadPlaylist()
+                    _snackbar.tryEmit("Failed to rename playlist")
+                }
+        }
+    }
+
     fun removeTrack(songIndex: Int) {
         val current = _state.value.playlist ?: return
         val tracks = current.entry.orEmpty().toMutableList()

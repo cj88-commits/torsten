@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -72,7 +73,9 @@ import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.common.SectionHeader
 import com.torsten.app.ui.playback.PlaybackViewModel
+import com.torsten.app.ui.theme.Radius
 import com.torsten.app.ui.theme.TorstenColor
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -214,7 +217,8 @@ fun AlbumDetailScreen(
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
             sheetState = contextSheetState,
-            containerColor = Color(0xFF1A1A1A),
+            containerColor = TorstenColor.Surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         ) {
             val song = contextSong!!
             Column(modifier = Modifier.padding(bottom = 24.dp)) {
@@ -315,33 +319,40 @@ fun AlbumDetailScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            // 1. Header: half-size art left + metadata column right
+            // 1. Header: centered art + metadata below
             item {
                 val coverArtUrl = remember(album?.coverArtId) {
                     album?.coverArtId?.let { viewModel.getCoverArtUrl(it, 600) }
                 }
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.Top,
+                        .padding(top = 8.dp, bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // Left: square cover art at half width
-                    AlbumCoverArt(
-                        coverArtUrl = coverArtUrl,
-                        coverArtId = album?.coverArtId,
-                        contentDescription = album?.title ?: "",
+                    // Centered square cover art, full width minus 40dp padding, max 280dp
+                    BoxWithConstraints(
                         modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp)),
-                        isOnline = isOnline,
-                    )
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val artSize = minOf(maxWidth, 280.dp)
+                        AlbumCoverArt(
+                            coverArtUrl = coverArtUrl,
+                            coverArtId = album?.coverArtId,
+                            contentDescription = album?.title ?: "",
+                            modifier = Modifier
+                                .size(artSize)
+                                .clip(RoundedCornerShape(Radius.card)),
+                            isOnline = isOnline,
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // Right: metadata column
-                    Column(modifier = Modifier.weight(1f)) {
+                    // Metadata column
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                         // Album title
                         Text(
                             text = album?.title ?: initialTitle,
@@ -350,18 +361,33 @@ fun AlbumDetailScreen(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+
+                        // Downloaded pill badge
+                        if (downloadState == DownloadState.COMPLETE) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = TorstenColor.Success.copy(alpha = 0.15f),
+                            ) {
+                                Text(
+                                    text = "Downloaded",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TorstenColor.Success,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(6.dp))
 
                         // Artist name (tappable) + star
                         val hasArtist = album?.artistId?.isNotEmpty() == true
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = album?.artistName ?: "",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color.White.copy(alpha = if (hasArtist) 0.9f else 0.6f),
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .weight(1f)
@@ -386,33 +412,20 @@ fun AlbumDetailScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
-                        // Track count
-                        if (songs.isNotEmpty()) {
-                            Text(
-                                text = "${songs.size} ${if (songs.size == 1) "track" else "tracks"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.5f),
-                            )
+                        // Metadata row: year · tracks · duration on one line
+                        val metaParts = buildList {
+                            album?.year?.let { add(it.toString()) }
+                            if (songs.isNotEmpty()) add("${songs.size} ${if (songs.size == 1) "track" else "tracks"}")
+                            val totalSeconds = songs.sumOf { it.duration }
+                            if (totalSeconds > 0) add(formatDuration(totalSeconds))
                         }
-
-                        // Total duration
-                        val totalSeconds = songs.sumOf { it.duration }
-                        if (totalSeconds > 0) {
+                        if (metaParts.isNotEmpty()) {
                             Text(
-                                text = formatDuration(totalSeconds),
+                                text = metaParts.joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.5f),
-                            )
-                        }
-
-                        // Year
-                        if (album?.year != null) {
-                            Text(
-                                text = album?.year.toString(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.5f),
+                                color = TorstenColor.TextTertiary,
                             )
                         }
                     }
@@ -424,12 +437,12 @@ fun AlbumDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Button(
                         onClick = { tryPlay(songs, album) },
-                        modifier = Modifier.height(48.dp),
+                        modifier = Modifier.height(40.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
@@ -472,12 +485,7 @@ fun AlbumDetailScreen(
 
             // 5. Track list header
             item {
-                Text(
-                    text = "Tracks",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(16.dp),
-                )
+                SectionHeader(title = "Tracks")
             }
 
             // 6. Tracks
@@ -533,7 +541,7 @@ private fun DownloadButton(
         color = bgColor,
         contentColor = contentColor,
         modifier = Modifier
-            .height(48.dp)
+            .height(40.dp)
             .combinedClickable(
                 onClick = {
                     when (downloadState) {
@@ -605,14 +613,14 @@ private fun TrackRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isCurrentlyPlaying) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
                 contentDescription = "Now playing",
-                tint = Color.White,
+                tint = TorstenColor.Accent,
                 modifier = Modifier
                     .width(32.dp)
                     .size(18.dp),

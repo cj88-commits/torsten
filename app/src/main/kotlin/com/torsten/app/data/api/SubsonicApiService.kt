@@ -113,6 +113,7 @@ internal interface SubsonicApiService {
     @GET("rest/updatePlaylist")
     suspend fun updatePlaylist(
         @Query("playlistId") playlistId: String,
+        @Query("name") name: String? = null,
         @Query("songIdToAdd") songIdToAdd: String? = null,
         @Query("songIndexToRemove") songIndexToRemove: Int? = null,
     ): StarResponseDto

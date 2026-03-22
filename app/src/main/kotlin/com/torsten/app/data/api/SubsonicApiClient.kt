@@ -260,6 +260,11 @@ class SubsonicApiClient(private val config: ServerConfig) {
         return body.playlist
     }
 
+    suspend fun renamePlaylist(playlistId: String, name: String) {
+        val body = service.updatePlaylist(playlistId, name = name).response
+        checkStatus(body.status, body.error?.message)
+    }
+
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String) {
         val body = service.updatePlaylist(playlistId, songIdToAdd = trackId).response
         checkStatus(body.status, body.error?.message)

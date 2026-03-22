@@ -142,6 +142,9 @@ class SearchViewModel(
                 "search3('%s') → %d tracks, %d albums, %d artists",
                 query, r.tracks.size, r.albums.size, r.artists.size,
             )
+            r.artists.forEach { artist ->
+                Timber.tag("[Search]").d("  artist id=%s name='%s' coverArt=%s", artist.id, artist.name, artist.coverArt)
+            }
         }.onFailure { e ->
             Timber.tag("[Search]").e(e, "search3 failed for query '%s'", query)
             _results.value = SearchUiState(error = e.message ?: "Search failed", hasSearched = true)

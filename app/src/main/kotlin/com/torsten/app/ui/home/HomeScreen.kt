@@ -15,17 +15,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -42,13 +43,16 @@ import com.torsten.app.data.api.dto.AlbumDto
 import com.torsten.app.data.api.dto.GenreDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.common.SectionHeader
+import com.torsten.app.ui.theme.Radius
 import com.torsten.app.ui.theme.TorstenColor
 import java.util.Calendar
 
-private val CardWidth   = 130.dp
+private val CardWidth   = 150.dp
 private val CardSpacing = 12.dp
 private val RowPadding  = 16.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -77,64 +81,77 @@ fun HomeScreen(
             )
 
             else -> {
-                Column(
+                PullToRefreshBox(
+                    isRefreshing = state.isLoading,
+                    onRefresh = viewModel::loadFeed,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
-                        .statusBarsPadding()
-                        .verticalScroll(rememberScrollState()),
+                        .statusBarsPadding(),
                 ) {
-                    // ── Greeting header ──────────────────────────────────────
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = greeting,
-                        fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = RowPadding),
-                    )
-                    Text(
-                        text = "Torsten",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = RowPadding),
-                    )
-                    Spacer(Modifier.height(16.dp))
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        // ── Greeting header ──────────────────────────────────
+                        item {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = greeting,
+                                fontSize = 14.sp,
+                                color = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(horizontal = RowPadding),
+                            )
+                            Text(
+                                text = "Torsten",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = RowPadding),
+                            )
+                            Spacer(Modifier.height(16.dp))
+                        }
 
-                    AlbumRow(
-                        title          = "Recently Played",
-                        albums         = state.recentlyPlayed,
-                        isLoading      = state.isLoading,
-                        getCoverArtUrl = viewModel::getCoverArtUrl,
-                        onAlbumClick   = onAlbumClick,
-                        onSeeAll       = { onSeeAll("recent", "Recently Played") },
-                    )
+                        item {
+                            AlbumRow(
+                                title          = "Recently Played",
+                                albums         = state.recentlyPlayed,
+                                isLoading      = state.isLoading,
+                                getCoverArtUrl = viewModel::getCoverArtUrl,
+                                onAlbumClick   = onAlbumClick,
+                                onSeeAll       = { onSeeAll("recent", "Recently Played") },
+                            )
+                        }
 
-                    AlbumRow(
-                        title          = "New Additions",
-                        albums         = state.newAdditions,
-                        isLoading      = state.isLoading,
-                        getCoverArtUrl = viewModel::getCoverArtUrl,
-                        onAlbumClick   = onAlbumClick,
-                        onSeeAll       = { onSeeAll("newest", "New Additions") },
-                    )
+                        item {
+                            AlbumRow(
+                                title          = "New Additions",
+                                albums         = state.newAdditions,
+                                isLoading      = state.isLoading,
+                                getCoverArtUrl = viewModel::getCoverArtUrl,
+                                onAlbumClick   = onAlbumClick,
+                                onSeeAll       = { onSeeAll("newest", "New Additions") },
+                            )
+                        }
 
-                    AlbumRow(
-                        title          = "Most Played",
-                        albums         = state.mostPlayed,
-                        isLoading      = state.isLoading,
-                        getCoverArtUrl = viewModel::getCoverArtUrl,
-                        onAlbumClick   = onAlbumClick,
-                        onSeeAll       = { onSeeAll("frequent", "Most Played") },
-                    )
+                        item {
+                            AlbumRow(
+                                title          = "Most Played",
+                                albums         = state.mostPlayed,
+                                isLoading      = state.isLoading,
+                                getCoverArtUrl = viewModel::getCoverArtUrl,
+                                onAlbumClick   = onAlbumClick,
+                                onSeeAll       = { onSeeAll("frequent", "Most Played") },
+                            )
+                        }
 
-                    GenreRow(
-                        genres       = state.genres,
-                        isLoading    = state.isLoading,
-                        onGenreClick = onGenreClick,
-                    )
+                        item {
+                            GenreRow(
+                                genres       = state.genres,
+                                isLoading    = state.isLoading,
+                                onGenreClick = onGenreClick,
+                            )
+                        }
 
-                    Spacer(Modifier.height(16.dp))
+                        item { Spacer(Modifier.height(16.dp)) }
+                    }
                 }
             }
         }
@@ -153,7 +170,7 @@ private fun AlbumRow(
     onSeeAll: (() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        SectionHeading(title, onSeeAll = onSeeAll)
+        SectionHeader(title = title, onSeeAll = onSeeAll)
 
         if (isLoading) {
             LazyRow(
@@ -197,7 +214,7 @@ private fun GenreRow(
     onGenreClick: (String) -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        SectionHeading("Genres")
+        SectionHeader(title = "Genres")
 
         if (isLoading) {
             LazyRow(
@@ -262,7 +279,7 @@ private fun HomeAlbumCard(
             isOnline           = true,
             modifier           = Modifier
                 .size(CardWidth)
-                .clip(RoundedCornerShape(6.dp)),
+                .clip(RoundedCornerShape(Radius.card)),
         )
 
         Spacer(Modifier.height(6.dp))
@@ -286,35 +303,6 @@ private fun HomeAlbumCard(
     }
 }
 
-// ─── Section heading ──────────────────────────────────────────────────────────
-
-@Composable
-private fun SectionHeading(text: String, onSeeAll: (() -> Unit)? = null) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = RowPadding, end = 8.dp, bottom = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text       = text,
-            fontSize   = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color      = Color.White,
-        )
-        if (onSeeAll != null) {
-            TextButton(onClick = onSeeAll) {
-                Text(
-                    text  = "See all",
-                    color = TorstenColor.TextSecondary,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-        }
-    }
-}
-
 // ─── Skeleton placeholders ────────────────────────────────────────────────────
 
 @Composable
@@ -323,7 +311,7 @@ private fun SkeletonCard() {
         Box(
             modifier = Modifier
                 .size(CardWidth)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(Radius.card))
                 .background(TorstenColor.ElevatedSurface),
         )
         Spacer(Modifier.height(6.dp))

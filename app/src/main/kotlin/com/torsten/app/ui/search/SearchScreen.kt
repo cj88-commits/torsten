@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Search
@@ -58,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -65,12 +64,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.torsten.app.data.api.dto.AlbumDto
 import com.torsten.app.data.api.dto.ArtistDto
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.playback.PlaybackViewModel
+import com.torsten.app.ui.theme.Radius
+import com.torsten.app.ui.theme.TorstenColor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -109,7 +113,8 @@ fun SearchScreen(
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
             sheetState = contextSheetState,
-            containerColor = Color(0xFF1A1A1A),
+            containerColor = TorstenColor.Surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         ) {
             val song = contextSong!!
             Column(
@@ -196,15 +201,15 @@ fun SearchScreen(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor      = Color.White,
-                    unfocusedTextColor    = Color.White,
-                    focusedContainerColor = SurfaceVariant,
-                    unfocusedContainerColor = SurfaceVariant,
-                    focusedBorderColor    = Color.White.copy(alpha = 0.4f),
-                    unfocusedBorderColor  = Color.Transparent,
-                    cursorColor           = Color.White,
+                    focusedTextColor        = Color.White,
+                    unfocusedTextColor      = Color.White,
+                    focusedContainerColor   = TorstenColor.Surface,
+                    unfocusedContainerColor = TorstenColor.Surface,
+                    focusedBorderColor      = Color.White.copy(alpha = 0.4f),
+                    unfocusedBorderColor    = Color.Transparent,
+                    cursorColor             = Color.White,
                 ),
-                shape    = RoundedCornerShape(12.dp),
+                shape    = RoundedCornerShape(Radius.card),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -393,9 +398,9 @@ private fun GenreCard(
 ) {
     Box(
         modifier = modifier
-            .aspectRatio(2.4f)
+            .height(72.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(SurfaceVariant)
+            .background(TorstenColor.ElevatedSurface)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         contentAlignment = Alignment.CenterStart,
@@ -404,15 +409,14 @@ private fun GenreCard(
             Text(
                 text      = genre.name,
                 color     = Color.White,
-                fontSize  = 13.sp,
-                fontWeight = FontWeight.SemiBold,
+                style     = MaterialTheme.typography.bodyMedium,
                 maxLines  = 1,
                 overflow  = TextOverflow.Ellipsis,
             )
             Text(
                 text    = "${genre.albumCount} albums",
                 color   = TextSecondary,
-                fontSize = 11.sp,
+                style   = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
             )
         }
@@ -461,8 +465,9 @@ private fun ResultsContent(
             }
             items(results.artists, key = { "ar_${it.id}" }) { artist ->
                 ArtistResultRow(
-                    artist  = artist,
-                    onClick = { onArtistClick(artist.id) },
+                    artist       = artist,
+                    coverArtUrl  = artist.coverArt?.let { getCoverArtUrl(it, 150) },
+                    onClick      = { onArtistClick(artist.id) },
                 )
             }
             item { ResultSectionDivider() }
@@ -575,7 +580,8 @@ private fun AlbumResultRow(album: AlbumDto, coverArtUrl: String?, onClick: () ->
 }
 
 @Composable
-private fun ArtistResultRow(artist: ArtistDto, onClick: () -> Unit) {
+private fun ArtistResultRow(artist: ArtistDto, coverArtUrl: String?, onClick: () -> Unit) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -583,20 +589,33 @@ private fun ArtistResultRow(artist: ArtistDto, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Circle avatar placeholder
+        // Circle avatar: initials as fallback, image loaded on top
         Box(
-            modifier          = Modifier
+            modifier         = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(SurfaceVariant),
-            contentAlignment  = Alignment.Center,
+                .background(TorstenColor.ElevatedSurface),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                Icons.Filled.Person,
-                contentDescription = null,
-                tint     = TextSecondary,
-                modifier = Modifier.size(22.dp),
+            Text(
+                text       = artist.name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                color      = TorstenColor.TextSecondary,
+                style      = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
             )
+            if (coverArtUrl != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(coverArtUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = artist.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
