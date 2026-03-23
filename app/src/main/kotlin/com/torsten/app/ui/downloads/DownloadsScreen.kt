@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.torsten.app.data.datastore.DownloadedPlaylistInfo
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.ui.common.EmptyState
@@ -71,15 +72,19 @@ fun DownloadsScreen(
     viewModel: DownloadsViewModel,
     isOnline: Boolean,
     onAlbumClick: (albumId: String, title: String) -> Unit,
+    onPlaylistClick: (playlistId: String, name: String) -> Unit = { _, _ -> },
     onBrowseLibrary: () -> Unit = {},
 ) {
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
     val completedDownloads by viewModel.completedDownloads.collectAsStateWithLifecycle()
     val failedDownloads by viewModel.failedDownloads.collectAsStateWithLifecycle()
+    val downloadedPlaylists by viewModel.downloadedPlaylists.collectAsStateWithLifecycle()
 
-    val isEmpty = activeDownloads.isEmpty() && completedDownloads.isEmpty() && failedDownloads.isEmpty()
+    val isEmpty = activeDownloads.isEmpty() && completedDownloads.isEmpty() &&
+        failedDownloads.isEmpty() && downloadedPlaylists.isEmpty()
 
     var selectedAlbum by remember { mutableStateOf<AlbumEntity?>(null) }
+    var selectedPlaylist by remember { mutableStateOf<DownloadedPlaylistInfo?>(null) }
 
     if (selectedAlbum != null) {
         val album = selectedAlbum!!
@@ -93,6 +98,22 @@ fun DownloadsScreen(
             onDelete = {
                 viewModel.deleteDownload(album.id)
                 selectedAlbum = null
+            },
+        )
+    }
+
+    if (selectedPlaylist != null) {
+        val playlist = selectedPlaylist!!
+        CompletedAlbumSheet(
+            albumTitle = playlist.name,
+            onDismiss = { selectedPlaylist = null },
+            onPlay = {
+                onPlaylistClick(playlist.playlistId, playlist.name)
+                selectedPlaylist = null
+            },
+            onDelete = {
+                viewModel.deletePlaylistDownload(playlist.playlistId, playlist.songIds)
+                selectedPlaylist = null
             },
         )
     }
@@ -184,6 +205,28 @@ fun DownloadsScreen(
                         coverArtUrl = album.coverArtId?.let { viewModel.getCoverArtUrl(it) },
                         isOnline = isOnline,
                         onRetry = { viewModel.retryDownload(album.id) },
+                    )
+                }
+            }
+
+            // ── Downloaded playlists ──────────────────────────────────────────
+            if (downloadedPlaylists.isNotEmpty()) {
+                item {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(top = 8.dp),
+                        color = TorstenColor.Surface,
+                    )
+                    SectionHeader(
+                        title = "Downloaded Playlists · ${downloadedPlaylists.size}",
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                itemsIndexed(downloadedPlaylists, key = { _, p -> p.playlistId }) { _, playlist ->
+                    DownloadedPlaylistRow(
+                        playlist = playlist,
+                        coverArtUrl = playlist.coverArtId?.let { viewModel.getCoverArtUrl(it) },
+                        onClick = { onPlaylistClick(playlist.playlistId, playlist.name) },
+                        onLongPress = { selectedPlaylist = playlist },
                     )
                 }
             }
@@ -479,6 +522,76 @@ private fun CompletedAlbumSheet(
             Text("Delete download", color = TorstenColor.Error, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+// ─── Downloaded playlist row ──────────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DownloadedPlaylistRow(
+    playlist: DownloadedPlaylistInfo,
+    coverArtUrl: String?,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.size(56.dp)) {
+            AsyncImage(
+                model = coverArtImageRequest(context, coverArtUrl, playlist.coverArtId, true),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(TorstenColor.ElevatedSurface),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(16.dp)
+                    .background(TorstenColor.Success, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = playlist.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${playlist.songCount} ${if (playlist.songCount == 1) "track" else "tracks"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = TorstenColor.TextSecondary,
+            )
+        }
+
+        Text(
+            text = formatDownloadDate(playlist.downloadedAt),
+            style = MaterialTheme.typography.labelSmall,
+            color = TorstenColor.TextTertiary,
+            modifier = Modifier.padding(start = 8.dp),
+        )
     }
 }
 

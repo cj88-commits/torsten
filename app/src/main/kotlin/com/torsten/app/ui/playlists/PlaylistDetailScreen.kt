@@ -1,5 +1,6 @@
 package com.torsten.app.ui.playlists
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -37,6 +39,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -73,6 +76,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.datastore.ServerConfig
+import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.EmptyState
 import com.torsten.app.ui.playback.PlaybackViewModel
@@ -100,6 +104,7 @@ fun PlaylistDetailScreen(
     onStartInstantMix: (seed: SongDto) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -109,6 +114,7 @@ fun PlaylistDetailScreen(
     val contextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameValue by remember { mutableStateOf("") }
+    var showDeleteDownloadDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.snackbar.collect { snackbarHostState.showSnackbar(it) }
@@ -136,6 +142,26 @@ fun PlaylistDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showDeleteDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDownloadDialog = false },
+            title = { Text("Delete playlist download?") },
+            text = { Text("All downloaded tracks will be removed from this device.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDownloadDialog = false
+                        viewModel.deletePlaylistDownload()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDownloadDialog = false }) { Text("Cancel") }
             },
         )
     }
@@ -382,6 +408,12 @@ fun PlaylistDetailScreen(
                                             Spacer(Modifier.width(4.dp))
                                             Text("Shuffle")
                                         }
+                                        PlaylistDownloadButton(
+                                            downloadState = downloadState,
+                                            onDownload = viewModel::downloadPlaylist,
+                                            onCancel = viewModel::cancelPlaylistDownload,
+                                            onDelete = { showDeleteDownloadDialog = true },
+                                        )
                                     }
                                 }
                             }
@@ -477,6 +509,86 @@ private suspend fun playPlaylist(
         lastUpdated = now,
     )
     playbackViewModel.playAlbum(songs, album, startIndex, config, coverArtUrl)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PlaylistDownloadButton(
+    downloadState: DownloadState,
+    onDownload: () -> Unit,
+    onCancel: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val isActive = downloadState == DownloadState.DOWNLOADING
+    val isComplete = downloadState == DownloadState.COMPLETE
+    val isPartial = downloadState == DownloadState.PARTIAL
+
+    val borderColor = when {
+        isComplete -> null
+        isActive -> Color.White.copy(alpha = 0.2f)
+        else -> Color.White.copy(alpha = 0.3f)
+    }
+    val bgColor = if (isComplete) TorstenColor.Success else Color.Transparent
+    val contentColor = if (isActive) TorstenColor.TextTertiary else Color.White
+
+    Surface(
+        shape = RoundedCornerShape(50),
+        border = borderColor?.let { BorderStroke(1.dp, it) },
+        color = bgColor,
+        contentColor = contentColor,
+        modifier = Modifier
+            .height(40.dp)
+            .combinedClickable(
+                onClick = {
+                    when (downloadState) {
+                        DownloadState.NONE, DownloadState.PARTIAL -> onDownload()
+                        else -> {}
+                    }
+                },
+                onLongClick = when {
+                    isActive -> onCancel
+                    isComplete -> onDelete
+                    else -> null
+                },
+            ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when (downloadState) {
+                DownloadState.NONE -> {
+                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Download", style = MaterialTheme.typography.labelLarge)
+                }
+                DownloadState.DOWNLOADING -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = TorstenColor.TextTertiary,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Downloading…", style = MaterialTheme.typography.labelLarge)
+                }
+                DownloadState.COMPLETE -> {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Downloaded ✓", style = MaterialTheme.typography.labelLarge)
+                }
+                DownloadState.PARTIAL -> {
+                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Resume", style = MaterialTheme.typography.labelLarge)
+                }
+                else -> {
+                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Download", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

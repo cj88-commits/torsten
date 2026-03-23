@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
+import com.torsten.app.data.datastore.DownloadedPlaylistInfo
+import com.torsten.app.data.datastore.DownloadedPlaylistStore
 import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.db.AppDatabase
 import com.torsten.app.data.db.entity.AlbumEntity
@@ -23,6 +25,7 @@ class DownloadsViewModel(
     private val db: AppDatabase,
     private val downloadRepository: DownloadRepository,
     private val configStore: ServerConfigStore,
+    private val downloadedPlaylistStore: DownloadedPlaylistStore,
 ) : ViewModel() {
 
     private var apiClient: SubsonicApiClient? = null
@@ -45,6 +48,11 @@ class DownloadsViewModel(
         .map { albums -> albums.filter { it.downloadState == DownloadState.FAILED || it.downloadState == DownloadState.PARTIAL } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val downloadedPlaylists: StateFlow<List<DownloadedPlaylistInfo>> =
+        downloadedPlaylistStore.downloadedPlaylists
+            .map { it.sortedByDescending { p -> p.downloadedAt } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             val config = configStore.serverConfig.first()
@@ -66,6 +74,13 @@ class DownloadsViewModel(
     fun retryDownload(albumId: String) {
         viewModelScope.launch { downloadRepository.enqueueDownload(albumId) }
     }
+
+    fun deletePlaylistDownload(playlistId: String, songIds: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadRepository.deleteTrackDownloads(songIds)
+            downloadedPlaylistStore.remove(playlistId)
+        }
+    }
 }
 
 class DownloadsViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
@@ -76,6 +91,7 @@ class DownloadsViewModelFactory(private val context: Context) : ViewModelProvide
             db = app.database,
             downloadRepository = app.downloadRepository,
             configStore = ServerConfigStore(app),
+            downloadedPlaylistStore = app.downloadedPlaylistStore,
         ) as T
     }
 }

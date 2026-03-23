@@ -3,6 +3,7 @@ package com.torsten.app
 import android.app.Application
 import com.torsten.app.data.db.AppDatabase
 import com.torsten.app.data.datastore.DownloadConfigStore
+import com.torsten.app.data.datastore.DownloadedPlaylistStore
 import com.torsten.app.data.datastore.ImageCacheConfigStore
 import com.torsten.app.data.datastore.PlaybackConfigStore
 import com.torsten.app.data.datastore.ServerConfigStore
@@ -30,6 +31,8 @@ class TorstenApp : Application() {
     val downloadRepository: DownloadRepository by lazy {
         DownloadRepository(this, database, downloadConfigStore)
     }
+
+    val downloadedPlaylistStore: DownloadedPlaylistStore by lazy { DownloadedPlaylistStore(this) }
 
     val queueManager: QueueManager by lazy { QueueManager() }
 

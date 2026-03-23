@@ -66,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.DownloadState
@@ -300,7 +301,7 @@ fun AlbumDetailScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(album?.title ?: initialTitle.ifEmpty { "Album" }, color = Color.White) },
+                title = { Text(album?.title ?: "", color = Color.White) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0A0A0A)),
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
@@ -362,20 +363,14 @@ fun AlbumDetailScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
 
-                        // Downloaded pill badge
+                        // Downloaded inline label
                         if (downloadState == DownloadState.COMPLETE) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = TorstenColor.Success.copy(alpha = 0.15f),
-                            ) {
-                                Text(
-                                    text = "Downloaded",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TorstenColor.Success,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                )
-                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "✓ Downloaded",
+                                fontSize = 12.sp,
+                                color = TorstenColor.Success,
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(6.dp))

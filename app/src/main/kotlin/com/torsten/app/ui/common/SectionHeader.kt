@@ -33,7 +33,7 @@ fun SectionHeader(
         Text(
             text = title,
             fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = TorstenColor.TextPrimary,
         )
         if (onSeeAll != null) {

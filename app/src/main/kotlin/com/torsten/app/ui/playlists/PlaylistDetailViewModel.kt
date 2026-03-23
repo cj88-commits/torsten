@@ -7,10 +7,14 @@ import androidx.lifecycle.viewModelScope
 import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.api.dto.PlaylistWithTracksDto
+import com.torsten.app.data.datastore.DownloadedPlaylistInfo
+import com.torsten.app.data.datastore.DownloadedPlaylistStore
 import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.data.datastore.ServerConfigStore
+import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.data.repository.PlaylistRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +22,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -32,6 +37,7 @@ class PlaylistDetailViewModel(
     val playlistId: String,
     private val repository: PlaylistRepository,
     private val configStore: ServerConfigStore,
+    private val downloadedPlaylistStore: DownloadedPlaylistStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistDetailUiState())
@@ -39,6 +45,12 @@ class PlaylistDetailViewModel(
 
     private val _snackbar = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val snackbar: SharedFlow<String> = _snackbar.asSharedFlow()
+
+    private val _downloadState = MutableStateFlow(DownloadState.NONE)
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
+
+    private val _isDownloading = MutableStateFlow(false)
+    private var downloadStateJob: Job? = null
 
     private var serverConfig: ServerConfig? = null
 
@@ -55,10 +67,77 @@ class PlaylistDetailViewModel(
             runCatching { repository.getPlaylist(playlistId) }
                 .onSuccess { playlist ->
                     _state.value = PlaylistDetailUiState(playlist = playlist, isLoading = false)
+                    val trackIds = playlist.entry.orEmpty().map { it.id }
+                    setupDownloadObservation(trackIds)
                 }
                 .onFailure { e ->
                     Timber.tag("[Playlists]").e(e, "getPlaylist failed")
                     _state.value = PlaylistDetailUiState(isLoading = false, error = e.message ?: "Failed to load playlist")
+                }
+        }
+    }
+
+    private fun setupDownloadObservation(trackIds: List<String>) {
+        downloadStateJob?.cancel()
+        if (trackIds.isEmpty()) return
+        downloadStateJob = viewModelScope.launch {
+            val dbFlow = repository.observePlaylistDownloadState(trackIds)
+            combine(dbFlow, _isDownloading) { dbState, isDownloading ->
+                when {
+                    dbState == DownloadState.COMPLETE -> DownloadState.COMPLETE
+                    isDownloading -> DownloadState.DOWNLOADING
+                    else -> dbState
+                }
+            }.collect { state ->
+                _downloadState.value = state
+                if (state == DownloadState.COMPLETE || state == DownloadState.PARTIAL) {
+                    _isDownloading.value = false
+                }
+            }
+        }
+    }
+
+    fun downloadPlaylist() {
+        val playlist = _state.value.playlist ?: return
+        val tracks = playlist.entry.orEmpty()
+        if (tracks.isEmpty()) return
+        _isDownloading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { repository.downloadPlaylist(playlistId, tracks) }
+                .onSuccess {
+                    downloadedPlaylistStore.save(
+                        DownloadedPlaylistInfo(
+                            playlistId = playlistId,
+                            name = playlist.name,
+                            songCount = tracks.size,
+                            coverArtId = playlist.coverArt,
+                            downloadedAt = System.currentTimeMillis(),
+                            songIds = tracks.map { it.id },
+                        ),
+                    )
+                }
+                .onFailure { e ->
+                    Timber.tag("[Download]").e(e, "downloadPlaylist failed")
+                    _isDownloading.value = false
+                    _snackbar.tryEmit("Failed to start download")
+                }
+        }
+    }
+
+    fun cancelPlaylistDownload() {
+        repository.cancelPlaylistDownload(playlistId)
+        _isDownloading.value = false
+    }
+
+    fun deletePlaylistDownload() {
+        val trackIds = _state.value.playlist?.entry.orEmpty().map { it.id }
+        _downloadState.value = DownloadState.NONE
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { repository.deletePlaylistDownload(trackIds) }
+                .onSuccess { downloadedPlaylistStore.remove(playlistId) }
+                .onFailure { e ->
+                    Timber.tag("[Download]").e(e, "deletePlaylistDownload failed")
+                    _snackbar.tryEmit("Failed to remove downloads")
                 }
         }
     }
@@ -119,8 +198,9 @@ class PlaylistDetailViewModelFactory(
         val app = context.applicationContext as TorstenApp
         return PlaylistDetailViewModel(
             playlistId = playlistId,
-            repository = PlaylistRepository(ServerConfigStore(app)),
+            repository = PlaylistRepository(ServerConfigStore(app), app.downloadRepository),
             configStore = ServerConfigStore(app),
+            downloadedPlaylistStore = app.downloadedPlaylistStore,
         ) as T
     }
 }

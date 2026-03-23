@@ -13,6 +13,9 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE id = :id")
     fun observeById(id: String): Flow<SongEntity?>
 
+    @Query("SELECT * FROM songs WHERE id = :id")
+    suspend fun getById(id: String): SongEntity?
+
     @Query("SELECT * FROM songs WHERE albumId = :albumId ORDER BY discNumber ASC, trackNumber ASC")
     fun observeByAlbum(albumId: String): Flow<List<SongEntity>>
 
@@ -30,6 +33,9 @@ interface SongDao {
 
     @Query("UPDATE songs SET localFilePath = NULL WHERE albumId = :albumId")
     suspend fun clearLocalFilePathsForAlbum(albumId: String)
+
+    @Query("UPDATE songs SET localFilePath = NULL WHERE id = :songId")
+    suspend fun clearLocalFilePath(songId: String)
 
     @Query("UPDATE songs SET starred = :starred WHERE id = :songId")
     suspend fun updateStarred(songId: String, starred: Boolean)

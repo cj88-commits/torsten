@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
@@ -30,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.torsten.app.data.queue.QueueTrack
 import com.torsten.app.ui.common.EmptyState
@@ -77,6 +80,7 @@ private fun formatDurationMs(durationMs: Long): String {
 @Composable
 fun QueueScreen(
     playbackViewModel: PlaybackViewModel,
+    navController: NavController,
     onNavigateToLibrary: () -> Unit = {},
 ) {
     val playbackState by playbackViewModel.state.collectAsStateWithLifecycle()
@@ -85,6 +89,7 @@ fun QueueScreen(
     val backgroundCurrentIndex by playbackViewModel.backgroundCurrentIndex.collectAsStateWithLifecycle()
 
     val isEmpty = !playbackState.isActive && priorityQueue.isEmpty() && backgroundSequence.isEmpty()
+    val showBackArrow = navController.previousBackStackEntry != null
 
     Box(
         modifier = Modifier
@@ -108,12 +113,32 @@ fun QueueScreen(
 
             // ── Page title ────────────────────────────────────────────────────
             item {
-                Text(
-                    text = "Queue",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (showBackArrow) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White,
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Queue",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(
+                                start = if (showBackArrow) 4.dp else 16.dp,
+                                top = 16.dp,
+                                bottom = 16.dp,
+                            ),
+                    )
+                }
             }
 
             // ── Currently Playing card ────────────────────────────────────────

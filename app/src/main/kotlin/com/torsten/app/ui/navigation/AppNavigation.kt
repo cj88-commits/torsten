@@ -238,6 +238,7 @@ fun AppNavigation() {
             composable(Screen.Queue.route) {
                 QueueScreen(
                     playbackViewModel = playbackViewModel,
+                    navController = navController,
                     onNavigateToLibrary = {
                         navController.navigate(Screen.Albums.route) {
                             popUpTo(Screen.Home.route) { saveState = true }
@@ -255,6 +256,9 @@ fun AppNavigation() {
                     isOnline = isOnline,
                     onAlbumClick = { albumId, title ->
                         navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
+                    },
+                    onPlaylistClick = { playlistId, name ->
+                        navController.navigate(Screen.PlaylistDetail.createRoute(playlistId, name))
                     },
                     onBrowseLibrary = {
                         navController.navigate(Screen.Albums.route) {
@@ -686,8 +690,8 @@ private fun AppBottomBar(
                     restoreState = true
                 }
             },
-            icon = { Icon(Icons.Filled.Download, contentDescription = "Downloads") },
-            label = { Text("Downloads") },
+            icon = { Icon(Icons.Filled.Download, contentDescription = "Saved") },
+            label = { Text("Saved") },
             colors = itemColors,
         )
 
