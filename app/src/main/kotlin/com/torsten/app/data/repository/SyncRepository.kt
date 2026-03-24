@@ -216,11 +216,14 @@ class SyncRepository(
             }
 
             val songEntities = albumWithSongs.song.orEmpty().map { dto ->
+                // Gson bypasses Kotlin null-safety; guard title explicitly.
+                @Suppress("SENSELESS_COMPARISON")
+                val safeTitle = if (dto.title == null) "" else dto.title
                 SongEntity(
                     id = dto.id,
                     albumId = albumId,
                     artistId = dto.artistId.orEmpty(),
-                    title = dto.title,
+                    title = safeTitle,
                     trackNumber = dto.track ?: 0,
                     discNumber = dto.discNumber ?: 1,
                     duration = dto.duration ?: 0,

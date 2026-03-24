@@ -75,7 +75,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.data.api.dto.SongDto
-import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.EmptyState
@@ -379,7 +378,7 @@ fun PlaylistDetailScreen(
                                             onClick = {
                                                 scope.launch {
                                                     val config = viewModel.getServerConfig().first()
-                                                    playPlaylist(tracks, playlist.id, playlist.name, playlist.coverArt, config, viewModel, playbackViewModel)
+                                                    playbackViewModel.playFromSongDtos(tracks, config)
                                                 }
                                             },
                                             modifier = Modifier.height(40.dp),
@@ -395,7 +394,7 @@ fun PlaylistDetailScreen(
                                             onClick = {
                                                 scope.launch {
                                                     val config = viewModel.getServerConfig().first()
-                                                    playPlaylist(tracks.shuffled(), playlist.id, playlist.name, playlist.coverArt, config, viewModel, playbackViewModel)
+                                                    playbackViewModel.playFromSongDtos(tracks, config, shuffle = true)
                                                 }
                                             },
                                             modifier = Modifier.height(40.dp),
@@ -449,7 +448,7 @@ fun PlaylistDetailScreen(
                             onClick = {
                                 scope.launch {
                                     val config = viewModel.getServerConfig().first()
-                                    playPlaylist(tracks, playlist.id, playlist.name, playlist.coverArt, config, viewModel, playbackViewModel, startIndex = index)
+                                    playbackViewModel.playFromSongDtos(tracks, config, startIndex = index)
                                 }
                             },
                         )
@@ -462,54 +461,6 @@ fun PlaylistDetailScreen(
     }
 }
 
-private suspend fun playPlaylist(
-    tracks: List<SongDto>,
-    playlistId: String,
-    playlistName: String,
-    coverArtId: String?,
-    config: ServerConfig,
-    detailViewModel: PlaylistDetailViewModel,
-    playbackViewModel: PlaybackViewModel,
-    startIndex: Int = 0,
-) {
-    val now = System.currentTimeMillis()
-    val coverArtUrl = coverArtId?.let { detailViewModel.getCoverArtUrl(it, 300) }
-
-    val songs = tracks.mapIndexed { idx, song ->
-        com.torsten.app.data.db.entity.SongEntity(
-            id = song.id,
-            albumId = song.albumId.orEmpty().ifEmpty { "playlist_$playlistId" },
-            artistId = song.artistId.orEmpty(),
-            title = song.title,
-            trackNumber = idx + 1,
-            discNumber = 1,
-            duration = song.duration ?: 0,
-            bitRate = song.bitRate,
-            suffix = song.suffix,
-            contentType = song.contentType,
-            starred = song.starred != null,
-            localFilePath = null,
-            lastUpdated = now,
-        )
-    }
-    val album = com.torsten.app.data.db.entity.AlbumEntity(
-        id = "playlist_$playlistId",
-        title = playlistName,
-        artistId = "",
-        artistName = "",
-        year = null,
-        genre = null,
-        songCount = tracks.size,
-        duration = tracks.sumOf { it.duration ?: 0 },
-        coverArtId = coverArtId,
-        starred = false,
-        downloadState = com.torsten.app.data.db.entity.DownloadState.NONE,
-        downloadProgress = 0,
-        downloadedAt = null,
-        lastUpdated = now,
-    )
-    playbackViewModel.playAlbum(songs, album, startIndex, config, coverArtUrl)
-}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

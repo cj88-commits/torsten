@@ -4,8 +4,10 @@ import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.db.dao.AlbumDao
 import com.torsten.app.data.db.dao.ArtistMbidCacheDao
+import com.torsten.app.data.db.dao.ArtistTopTracksCacheDao
 import com.torsten.app.data.db.dao.SongDao
 import com.torsten.app.data.db.entity.ArtistMbidCacheEntity
+import com.torsten.app.data.db.entity.ArtistTopTracksCacheEntity
 import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.metabrainz.ListenBrainzClient
 import com.torsten.app.data.metabrainz.MusicBrainzClient
@@ -22,11 +24,24 @@ class ArtistTopTracksRepository(
     private val songDao: SongDao,
     private val albumDao: AlbumDao,
     private val artistMbidCacheDao: ArtistMbidCacheDao,
+    private val artistTopTracksCacheDao: ArtistTopTracksCacheDao,
     private val musicBrainzClient: MusicBrainzClient,
     private val listenBrainzClient: ListenBrainzClient,
 ) {
 
     suspend fun getTopTracks(artistId: String, artistName: String): ArtistTopResult {
+        // 0. Cache check — skip LB entirely if fresh result is cached
+        val cached = artistTopTracksCacheDao.getByArtistId(artistId)
+        if (cached != null && cached.isValid()) {
+            val ids = cached.trackIds.split(",").filter { it.isNotEmpty() }
+            val songMap = ids.mapNotNull { songDao.getById(it) }.associateBy { it.id }
+            val ordered = ids.mapNotNull { songMap[it] }
+            if (ordered.isNotEmpty()) {
+                Timber.tag("[ArtistTop]").d("Cache hit for $artistName: ${ordered.size} tracks")
+                return ArtistTopResult(displayTracks = ordered.take(5), fullTracks = ordered.take(20))
+            }
+        }
+
         // 1. Initial pool
         val initialPool = songDao.getByArtistId(artistId)
         Timber.tag("[ArtistTop]").d("Initial song pool for $artistName: ${initialPool.size} songs")
@@ -62,6 +77,16 @@ class ArtistTopTracksRepository(
         // 7. Build result
         val fullTracks = matched.take(20).map { it.song }
         val displayTracks = buildDisplayTracks(matched, artistName)
+
+        // Cache the LB-ranked result for 24 hours
+        artistTopTracksCacheDao.upsert(
+            ArtistTopTracksCacheEntity(
+                artistId = artistId,
+                trackIds = fullTracks.joinToString(",") { it.id },
+                cachedAt = System.currentTimeMillis(),
+            )
+        )
+
         return ArtistTopResult(displayTracks = displayTracks, fullTracks = fullTracks)
     }
 
@@ -85,11 +110,14 @@ class ArtistTopTracksRepository(
                 val albumWithSongs = client.getAlbum(albumDto.id)
                 val now = System.currentTimeMillis()
                 val songs = albumWithSongs.song.orEmpty().map { dto ->
+                    // Gson bypasses Kotlin null-safety; guard title explicitly.
+                    @Suppress("SENSELESS_COMPARISON")
+                    val safeTitle = if (dto.title == null) "" else dto.title
                     SongEntity(
                         id = dto.id,
                         albumId = albumDto.id,
                         artistId = dto.artistId.orEmpty(),
-                        title = dto.title,
+                        title = safeTitle,
                         trackNumber = dto.track ?: 0,
                         discNumber = dto.discNumber ?: 1,
                         duration = dto.duration ?: 0,

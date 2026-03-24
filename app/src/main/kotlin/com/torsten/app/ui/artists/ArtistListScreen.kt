@@ -23,8 +23,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,8 +41,8 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.torsten.app.data.db.entity.ArtistEntity
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.common.LibraryHeader
 import com.torsten.app.ui.common.LibraryTab
-import com.torsten.app.ui.common.LibraryTabRow
 import kotlinx.coroutines.launch
 
 private val ThumbnailBackground = Color(0xFF0A0A0A)
@@ -78,26 +76,17 @@ fun ArtistListScreen(
     Scaffold(
         containerColor = DarkBackground,
         topBar = {
-            TopAppBar(
-                title = { Text("Artists", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0A0A0A)),
+            LibraryHeader(
+                currentTab = LibraryTab.ARTISTS,
+                onNavigateToAlbums = onNavigateToAlbums,
+                onNavigateToPlaylists = onNavigateToPlaylists,
             )
         },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-        ) {
-            LibraryTabRow(
-                selected = LibraryTab.ARTISTS,
-                onAlbumsClick = onNavigateToAlbums,
-                onArtistsClick = {},
-                onPlaylistsClick = onNavigateToPlaylists,
-            )
-        Box(
-            modifier = Modifier
-                .fillMaxSize(),
         ) {
             if (artists.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -124,9 +113,7 @@ fun ArtistListScreen(
                     }
                 }
 
-                // Fast-scroll alphabet index pinned to the right.
-                // Each letter gets weight(1f) so all entries share the available height equally —
-                // this guarantees every letter is visible on any screen size without overflow.
+                // Fast-scroll alphabet index pinned to the right
                 if (indexEntries.isNotEmpty()) {
                     Column(
                         modifier = Modifier
@@ -157,7 +144,6 @@ fun ArtistListScreen(
                 }
             }
         }
-        } // end Column
     }
 }
 

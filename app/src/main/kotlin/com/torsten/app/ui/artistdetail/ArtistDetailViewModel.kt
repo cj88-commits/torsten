@@ -62,6 +62,9 @@ class ArtistDetailViewModel(
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _topTracksLoading = MutableStateFlow(true)
+    val topTracksLoading: StateFlow<Boolean> = _topTracksLoading.asStateFlow()
+
     private var apiClient: SubsonicApiClient? = null
 
     init {
@@ -87,12 +90,18 @@ class ArtistDetailViewModel(
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            val artistName = db.artistDao().observeById(artistId).first()?.name ?: return@launch
+            val artistName = db.artistDao().observeById(artistId).first()?.name ?: run {
+                _topTracksLoading.value = false
+                return@launch
+            }
             val result = runCatching {
                 artistTopTracksRepository.getTopTracks(artistId, artistName)
-            }.getOrNull() ?: return@launch
-            _displayTopTracks.value = result.displayTracks
-            _fullTopTracks.value = result.fullTracks
+            }.getOrNull()
+            if (result != null) {
+                _displayTopTracks.value = result.displayTracks
+                _fullTopTracks.value = result.fullTracks
+            }
+            _topTracksLoading.value = false
         }
     }
 

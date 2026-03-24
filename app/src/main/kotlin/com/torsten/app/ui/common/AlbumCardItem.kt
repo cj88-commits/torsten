@@ -99,6 +99,7 @@ fun AlbumCardItem(
     onOfflineBlocked: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String = album.artistName,
+    showDownloadBadge: Boolean = true,
 ) {
     val isDownloaded = album.downloadState == DownloadState.COMPLETE
     val isDimmed = !isOnline && !isDownloaded
@@ -155,7 +156,7 @@ fun AlbumCardItem(
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = Color.White.copy(alpha = 0.5f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -166,7 +167,7 @@ fun AlbumCardItem(
             // Downloaded badge — rendered last so it sits on top of the gradient overlay.
             // Previously this lived inside AlbumCoverArt, which has a lower z-order than
             // the gradient Box above and caused the badge to appear behind it.
-            if (isDownloaded) {
+            if (isDownloaded && showDownloadBadge) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

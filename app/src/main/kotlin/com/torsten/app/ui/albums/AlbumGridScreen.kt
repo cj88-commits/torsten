@@ -1,6 +1,10 @@
 package com.torsten.app.ui.albums
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,28 +12,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,13 +39,10 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,14 +51,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.torsten.app.data.repository.SyncState
 import com.torsten.app.ui.common.AlbumCardItem
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.common.LibraryHeader
+import com.torsten.app.ui.common.LibrarySheetOption
 import com.torsten.app.ui.common.LibraryTab
-import com.torsten.app.ui.common.LibraryTabRow
+import com.torsten.app.ui.common.SheetSectionLabel
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -86,14 +84,19 @@ fun AlbumGridScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Grid state hoisted here so SortBar can observe the visible item for "Jump to" label
     val gridState = rememberLazyGridState()
 
-    // Restore the saved scroll position for this sort order.
-    // When sort changes this scrolls to the top (saved position is 0,0 for a sort never visited).
-    // When navigating back and the composable was recomposed, this restores where the user was.
-    // The index is clamped to the current list size: Room may have emitted a shorter list since
-    // the position was saved (e.g. a sync removed albums), which would make scrollToItem crash.
+    var showSortSheet by remember { mutableStateOf(false) }
+    var showJumpSheet by remember { mutableStateOf(false) }
+
+    // Section header positions used by the Jump To sheet
+    val sectionHeaders = remember(state.gridItems) {
+        state.gridItems.mapIndexedNotNull { index, item ->
+            if (item is AlbumGridItem.SectionHeader) item.label to index else null
+        }
+    }
+
+    // Restore scroll position when sort order changes
     LaunchedEffect(sortOrder) {
         val (index, offset) = viewModel.getScrollPosition(sortOrder)
         val itemCount = state.gridItems.size
@@ -106,9 +109,7 @@ fun AlbumGridScreen(
         }
     }
 
-    // Persist scroll position into the ViewModel as the user scrolls.
-    // drop(1) skips the snapshot emitted before the restoration above takes effect,
-    // so we never accidentally overwrite a saved position with a stale pre-restore value.
+    // Persist scroll position as user scrolls
     LaunchedEffect(gridState, sortOrder) {
         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
             .drop(1)
@@ -117,103 +118,9 @@ fun AlbumGridScreen(
             }
     }
 
-    // Section header indices: label → flat item index in gridItems
-    val sectionHeaderIndices by remember {
-        derivedStateOf {
-            state.gridItems.mapIndexedNotNull { index, item ->
-                if (item is AlbumGridItem.SectionHeader) item.label to index else null
-            }.toMap()
-        }
-    }
-
-    // Current section label derived from the topmost visible item
-    val showJumpTo = sortOrder == AlbumSortOrder.A_Z || sortOrder == AlbumSortOrder.BY_YEAR
-    val currentSectionLabel by remember {
-        derivedStateOf {
-            val idx = gridState.firstVisibleItemIndex
-            val items = state.gridItems
-            var label = ""
-            for (i in 0..idx.coerceAtMost(items.lastIndex.coerceAtLeast(0))) {
-                val item = items.getOrNull(i) ?: break
-                if (item is AlbumGridItem.SectionHeader) label = item.label
-            }
-            label
-        }
-    }
-
-    // Bottom sheet for jump-to navigation
-    var showJumpSheet by remember { mutableStateOf(false) }
-    val jumpSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     LaunchedEffect(Unit) {
         viewModel.snackbarEvent.collect { message ->
             snackbarHostState.showSnackbar(message)
-        }
-    }
-
-    if (showJumpSheet) {
-        val labels = remember(sectionHeaderIndices, sortOrder) {
-            when (sortOrder) {
-                AlbumSortOrder.A_Z -> sectionHeaderIndices.keys
-                    .sortedWith(compareBy { if (it == "#") "\uFFFF" else it })
-                AlbumSortOrder.BY_YEAR -> sectionHeaderIndices.keys
-                    .sortedBy { it.trimEnd('s').toIntOrNull() ?: Int.MAX_VALUE }
-                else -> emptyList()
-            }
-        }
-        ModalBottomSheet(
-            onDismissRequest = { showJumpSheet = false },
-            sheetState = jumpSheetState,
-            containerColor = Color(0xFF1A1A1A),
-        ) {
-            Text(
-                text = "Jump to",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                modifier = Modifier.padding(start = 20.dp, bottom = 8.dp),
-            )
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(64.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.padding(bottom = 24.dp),
-            ) {
-                items(labels) { label ->
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                jumpSheetState.hide()
-                                showJumpSheet = false
-                                // Re-read the index after hide() — the list may have changed
-                                // during the suspension. Bounds-check before scrolling to avoid
-                                // an IndexOutOfBoundsException if the list shrank.
-                                val targetIndex = sectionHeaderIndices[label]
-                                val itemCount = state.gridItems.size
-                                if (targetIndex != null && targetIndex < itemCount) {
-                                    try {
-                                        gridState.animateScrollToItem(targetIndex)
-                                    } catch (e: Exception) {
-                                        Timber.tag("[UI]").e(
-                                            e, "animateScrollToItem failed: index=%d itemCount=%d",
-                                            targetIndex, itemCount,
-                                        )
-                                    }
-                                } else if (targetIndex != null) {
-                                    Timber.tag("[UI]").w(
-                                        "Jump-to index %d out of range (size=%d) — skipping",
-                                        targetIndex, itemCount,
-                                    )
-                                }
-                            }
-                        },
-                    ) {
-                        Text(
-                            text = label,
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-            }
         }
     }
 
@@ -229,10 +136,19 @@ fun AlbumGridScreen(
             }
         },
         topBar = {
-            TopAppBar(
-                title = { Text("Library", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0A0A0A)),
-            )
+            Column {
+                LibraryHeader(
+                    currentTab = LibraryTab.ALBUMS,
+                    onNavigateToArtists = onNavigateToArtists,
+                    onNavigateToPlaylists = onNavigateToPlaylists,
+                )
+                AlbumSortBar(
+                    sortOrder = sortOrder,
+                    hasSections = sectionHeaders.isNotEmpty(),
+                    onSortClick = { showSortSheet = true },
+                    onJumpClick = { showJumpSheet = true },
+                )
+            }
         },
     ) { innerPadding ->
         Column(
@@ -243,63 +159,23 @@ fun AlbumGridScreen(
             if (!state.isOnline) OfflineBanner()
             if (syncFailed) SyncFailedBanner(onRetry = { if (state.isOnline) viewModel.refresh() })
 
-            LibraryTabRow(
-                selected = LibraryTab.ALBUMS,
-                onAlbumsClick = {},
-                onArtistsClick = onNavigateToArtists,
-                onPlaylistsClick = onNavigateToPlaylists,
-            )
-
             when {
-                // Filter-specific empty states — shown immediately without spinner
+                // Filter-specific empty states
                 !state.hasAlbums && !isActivelySyncing && isApiClientReady &&
                     sortOrder == AlbumSortOrder.RECENTLY_PLAYED -> {
                     FilterEmptyState(
-                        icon = { Icon(Icons.Filled.MusicNote, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.3f)) },
+                        icon = { Icon(Icons.Filled.MusicNote, null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.3f)) },
                         message = "No recently played albums yet",
-                        sortBar = {
-                            SortBar(
-                                sortOrder = sortOrder,
-                                onSortOrderSelected = viewModel::setSortOrder,
-                                jumpToLabel = null,
-                                onJumpToClick = {},
-                            )
-                        },
                     )
                 }
                 !state.hasAlbums && !isActivelySyncing && isApiClientReady &&
                     sortOrder == AlbumSortOrder.STARRED -> {
                     FilterEmptyState(
-                        icon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.3f)) },
+                        icon = { Icon(Icons.Filled.Star, null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.3f)) },
                         message = "No starred albums yet",
-                        sortBar = {
-                            SortBar(
-                                sortOrder = sortOrder,
-                                onSortOrderSelected = viewModel::setSortOrder,
-                                jumpToLabel = null,
-                                onJumpToClick = {},
-                            )
-                        },
                     )
                 }
-                !state.hasAlbums && !isActivelySyncing && isApiClientReady &&
-                    sortOrder == AlbumSortOrder.DOWNLOADED -> {
-                    FilterEmptyState(
-                        icon = { Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White.copy(alpha = 0.3f)) },
-                        message = "No downloaded albums yet",
-                        sortBar = {
-                            SortBar(
-                                sortOrder = sortOrder,
-                                onSortOrderSelected = viewModel::setSortOrder,
-                                jumpToLabel = null,
-                                onJumpToClick = {},
-                            )
-                        },
-                    )
-                }
-
                 !state.hasAlbums && isSyncing -> {
-                    // SINGLE SPINNER — do not add additional loading indicators
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Color.White)
                     }
@@ -334,12 +210,6 @@ fun AlbumGridScreen(
                 }
 
                 else -> {
-                    SortBar(
-                        sortOrder = sortOrder,
-                        onSortOrderSelected = viewModel::setSortOrder,
-                        jumpToLabel = if (showJumpTo && currentSectionLabel.isNotEmpty()) currentSectionLabel else null,
-                        onJumpToClick = { showJumpSheet = true },
-                    )
                     PullToRefreshBox(
                         isRefreshing = false,
                         onRefresh = { if (state.isOnline) viewModel.refresh() },
@@ -353,9 +223,6 @@ fun AlbumGridScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            // itemsIndexed: header keys combine the label with the flat list index
-                            // so that two SectionHeader items with the same label (e.g. two "#"
-                            // groups) can never produce duplicate keys → no ANR/crash.
                             itemsIndexed(
                                 items = state.gridItems,
                                 key = { index, item ->
@@ -377,7 +244,7 @@ fun AlbumGridScreen(
                                             text = item.label,
                                             style = MaterialTheme.typography.labelMedium,
                                             color = Color.White.copy(alpha = 0.5f),
-                                            modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp),
+                                            modifier = Modifier.padding(start = 2.dp, top = 8.dp, bottom = 2.dp),
                                         )
                                     }
                                     is AlbumGridItem.Album -> {
@@ -401,6 +268,7 @@ fun AlbumGridScreen(
                                                 }
                                             },
                                             subtitle = subtitle,
+                                            showDownloadBadge = false,
                                         )
                                     }
                                 }
@@ -411,81 +279,142 @@ fun AlbumGridScreen(
             }
         }
     }
-}
 
-// ─── Sort bar ─────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SortBar(
-    sortOrder: AlbumSortOrder,
-    onSortOrderSelected: (AlbumSortOrder) -> Unit,
-    jumpToLabel: String?,
-    onJumpToClick: () -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box {
-            Surface(
-                onClick = { expanded = true },
-                shape = RoundedCornerShape(50),
-                color = Color(0xFF111111),
-                border = BorderStroke(1.dp, Color(0xFF1A1A1A)),
-                modifier = Modifier.height(32.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = "Sort: ${sortOrder.label}",
-                        color = Color(0xFF8C8C8C),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Icon(
-                        Icons.Filled.ArrowDropDown,
-                        contentDescription = null,
-                        tint = Color(0xFF8C8C8C),
-                        modifier = Modifier.size(16.dp),
-                    )
+    // ── Sort bottom sheet ──────────────────────────────────────────────────────
+    if (showSortSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSortSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1A1A1A),
+        ) {
+            Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                SheetSectionLabel("Sort by")
+                AlbumSortOrder.entries.forEach { order ->
+                    LibrarySheetOption(order.label, sortOrder == order) {
+                        viewModel.setSortOrder(order)
+                        showSortSheet = false
+                    }
                 }
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                AlbumSortOrder.entries.forEach { order ->
-                    DropdownMenuItem(
-                        text = { Text(order.label) },
-                        onClick = { onSortOrderSelected(order); expanded = false },
+        }
+    }
+
+    // ── Jump to bottom sheet — compact chip grid ───────────────────────────────
+    if (showJumpSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showJumpSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1A1A1A),
+        ) {
+            JumpChipGrid(
+                headers = sectionHeaders,
+                onSelect = { gridIndex ->
+                    scope.launch { gridState.scrollToItem(gridIndex) }
+                    showJumpSheet = false
+                },
+            )
+        }
+    }
+}
+
+// ─── Jump-to chip grid ────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun JumpChipGrid(
+    headers: List<Pair<String, Int>>,
+    onSelect: (gridIndex: Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 32.dp),
+    ) {
+        Text(
+            text = "Jump to",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.45f),
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            headers.forEach { (label, gridIndex) ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.1f))
+                        .clickable { onSelect(gridIndex) }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
                     )
                 }
             }
         }
+    }
+}
 
-        if (jumpToLabel != null) {
-            Surface(
-                onClick = onJumpToClick,
-                shape = RoundedCornerShape(50),
-                color = Color(0xFF111111),
-                border = BorderStroke(1.dp, Color(0xFF1A1A1A)),
-                modifier = Modifier.height(32.dp),
+// ─── Secondary control row (Albums tab only) ──────────────────────────────────
+
+@Composable
+private fun AlbumSortBar(
+    sortOrder: AlbumSortOrder,
+    hasSections: Boolean,
+    onSortClick: () -> Unit,
+    onJumpClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0A0A0A))
+            .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Sort button
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .clickable(onClick = onSortClick)
+                .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = sortOrder.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+            )
+            Icon(
+                imageVector = Icons.Filled.ArrowDropDown,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+
+        // Jump to button — only when the current sort has section headers
+        if (hasSections) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .clickable(onClick = onJumpClick)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                Box(
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Jump to: $jumpToLabel",
-                        color = Color(0xFF8C8C8C),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+                Text(
+                    text = "Jump to",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                )
             }
         }
     }
@@ -497,22 +426,18 @@ private fun SortBar(
 private fun FilterEmptyState(
     icon: @Composable () -> Unit,
     message: String,
-    sortBar: @Composable () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        sortBar()
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                icon()
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White.copy(alpha = 0.5f),
-                )
-            }
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            icon()
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.5f),
+            )
         }
     }
 }

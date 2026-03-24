@@ -80,7 +80,7 @@ object CatalogueMatcher {
         return (0..s.length - 3).map { s.substring(it, it + 3) }.toSet()
     }
 
-    private fun trigramJaccard(a: String, b: String): Float {
+    internal fun trigramJaccard(a: String, b: String): Float {
         val ta = trigrams(a)
         val tb = trigrams(b)
         if (ta.isEmpty() && tb.isEmpty()) return 1f

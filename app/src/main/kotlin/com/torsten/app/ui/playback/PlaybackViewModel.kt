@@ -15,7 +15,7 @@ import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.data.queue.QueueManager
-import com.torsten.app.data.repository.InstantMixRepository
+import com.torsten.app.data.repository.InstantMixRepository // kept; unused — do not delete
 import com.torsten.app.data.queue.QueueTrack
 import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.datastore.StreamingConfig
@@ -25,13 +25,13 @@ import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.data.db.entity.PendingStarEntity
-import com.torsten.app.data.db.entity.RecentlyPlayedEntity
 import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.network.ConnectivityMonitor
 import com.torsten.app.service.PlaybackService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,7 +112,14 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
     @Suppress("OPT_IN_USAGE")
     val qualityBadge: StateFlow<String> = combine(
         _currentSongId.flatMapLatest { id ->
-            if (id.isEmpty()) flowOf(null) else db.songDao().observeById(id)
+            if (id.isEmpty()) flowOf(null)
+            else db.songDao().observeById(id).catch { e ->
+                // Room throws NPE when a non-null column stores NULL (e.g. a Gson-bypassed
+                // null title was persisted). Emit null so the badge gracefully degrades
+                // rather than crashing the ViewModel scope.
+                Timber.tag("[Player]").e(e, "observeById failed for song %s — badge degraded", id)
+                emit(null)
+            }
         },
         connectivityMonitor.isOnWifi,
         connectivityMonitor.isOnline,
@@ -427,17 +434,6 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 queueManager.setBackgroundSequence(bgTracks, startIndex)
             }
 
-            // Record recently played — fire-and-forget on IO
-            withContext(Dispatchers.IO) {
-                try {
-                    db.recentlyPlayedDao().insertAndTrim(
-                        RecentlyPlayedEntity(albumId = album.id, playedAt = System.currentTimeMillis()),
-                    )
-                    Timber.tag("[RecentlyPlayed]").d("Recorded album %s", album.id)
-                } catch (e: Exception) {
-                    Timber.tag("[RecentlyPlayed]").e(e, "Failed to record recently played for album %s", album.id)
-                }
-            }
         }
     }
 
@@ -492,10 +488,29 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             _isMixLoading.value = true
             try {
                 val mix = withContext(Dispatchers.IO) {
-                    InstantMixRepository(config).buildMix(seedSong)
+                    val seedEntity = db.songDao().getById(seedSong.id)
+                        ?: SongEntity(
+                            id = seedSong.id,
+                            albumId = seedSong.albumId.orEmpty(),
+                            artistId = seedSong.artistId.orEmpty(),
+                            title = seedSong.title,
+                            trackNumber = seedSong.track ?: 0,
+                            discNumber = seedSong.discNumber ?: 1,
+                            duration = seedSong.duration ?: 0,
+                            bitRate = seedSong.bitRate,
+                            suffix = seedSong.suffix,
+                            contentType = seedSong.contentType,
+                            starred = seedSong.starred != null,
+                            localFilePath = null,
+                            lastUpdated = System.currentTimeMillis(),
+                        )
+                    val artistName = seedSong.artist.orEmpty()
+                    val entities = (context.applicationContext as TorstenApp)
+                        .instantMixRepositoryV2.getMix(seedEntity, artistName)
+                    entities.map { entityToDto(it) }
                 }
                 playMix(mix, config)
-                _snackbarEvent.tryEmit("Mix ready — ${mix.size} tracks")
+                _snackbarEvent.tryEmit("Instant mix started")
             } catch (e: Exception) {
                 Timber.tag("[InstantMix]").e(e, "Failed to build instant mix for %s", seedSong.id)
                 _snackbarEvent.tryEmit("Couldn't build mix")
@@ -503,6 +518,26 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 _isMixLoading.value = false
             }
         }
+    }
+
+    private suspend fun entityToDto(entity: SongEntity): SongDto {
+        val album = db.albumDao().getById(entity.albumId)
+        return SongDto(
+            id = entity.id,
+            title = entity.title,
+            album = album?.title,
+            albumId = entity.albumId,
+            artist = album?.artistName,
+            artistId = entity.artistId,
+            track = entity.trackNumber,
+            discNumber = entity.discNumber,
+            duration = entity.duration,
+            bitRate = entity.bitRate,
+            suffix = entity.suffix,
+            contentType = entity.contentType,
+            coverArt = album?.coverArtId,
+            starred = if (entity.starred) "true" else null,
+        )
     }
 
     fun startInstantMixForCurrentSong() {

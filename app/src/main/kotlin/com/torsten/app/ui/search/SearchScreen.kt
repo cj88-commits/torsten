@@ -187,7 +187,7 @@ fun SearchScreen(
             OutlinedTextField(
                 value       = query,
                 onValueChange = viewModel::setQuery,
-                placeholder = { Text("Search tracks, albums, artists…", color = TextSecondary) },
+                placeholder = { Text("Search…", color = TextSecondary) },
                 leadingIcon = {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = TextSecondary)
                 },

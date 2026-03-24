@@ -8,8 +8,6 @@ import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.db.AppDatabase
 import com.torsten.app.data.db.entity.AlbumEntity
-import com.torsten.app.data.db.entity.DownloadState
-import com.torsten.app.data.db.entity.RecentlyPlayedEntity
 import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.network.ConnectivityMonitor
 import com.torsten.app.data.repository.SyncErrorType
@@ -25,8 +23,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -58,8 +56,15 @@ class AlbumGridViewModel(
     private val configStore: ServerConfigStore,
 ) : ViewModel() {
 
-    private val _sortOrder = MutableStateFlow(AlbumSortOrder.A_Z)
+    private val _sortOrder = MutableStateFlow(AlbumSortOrder.RECENTLY_PLAYED)
     val sortOrder: StateFlow<AlbumSortOrder> = _sortOrder
+
+    // Album IDs in server-returned recency order, fetched from getAlbumList2("recent").
+    private val _recentAlbumIds = MutableStateFlow<List<String>>(emptyList())
+
+    // Flips to true once the recents fetch has completed (success or failure).
+    // Used to avoid auto-switching sort order before the API response arrives.
+    private val _recentsLoaded = MutableStateFlow(false)
 
     val uiState: StateFlow<AlbumGridUiState> = combine(
         // Strip downloadProgress before diffing: progress ticks on every chunk written, which
@@ -68,14 +73,14 @@ class AlbumGridViewModel(
         db.albumDao().observeAll()
             .map { albums -> albums.map { it.copy(downloadProgress = 0) } }
             .distinctUntilChanged(),
-        db.recentlyPlayedDao().observeRecent().distinctUntilChanged(),
+        _recentAlbumIds,
         _sortOrder,
         syncRepository.syncState,
         connectivityMonitor.isOnline,
-    ) { albums, recentlyPlayed, sortOrder, syncState, isOnline ->
+    ) { albums, recentAlbumIds, sortOrder, syncState, isOnline ->
         AlbumGridUiState(
             gridItems = try {
-                buildGridItems(albums, recentlyPlayed, sortOrder)
+                buildGridItems(albums, recentAlbumIds, sortOrder)
             } catch (e: Exception) {
                 Timber.tag("[UI]").e(e, "buildGridItems crashed for sort=%s", sortOrder)
                 emptyList()
@@ -104,8 +109,26 @@ class AlbumGridViewModel(
                 apiClient = SubsonicApiClient(config)
             }
             _isApiClientReady.value = true
+            fetchRecentAlbumIds()
         }
         syncRepository.triggerSync(force = false)
+
+        // If there's no playback history on first load, default to A–Z instead of
+        // showing the empty Recently Played state. Wait for both the DB albums and the
+        // recents API response before deciding, to avoid a false-empty race condition.
+        viewModelScope.launch {
+            combine(uiState, _recentsLoaded) { state, loaded -> state to loaded }
+                .first { (state, loaded) ->
+                    loaded && (state.hasAlbums || state.syncState == SyncState.ERROR)
+                }
+                .let { (state, _) ->
+                    if (_sortOrder.value == AlbumSortOrder.RECENTLY_PLAYED &&
+                        state.gridItems.none { it is AlbumGridItem.Album }
+                    ) {
+                        _sortOrder.value = AlbumSortOrder.A_Z
+                    }
+                }
+        }
 
         viewModelScope.launch {
             syncRepository.syncError.collect { errorType ->
@@ -120,10 +143,25 @@ class AlbumGridViewModel(
         }
     }
 
-    fun refresh() = syncRepository.triggerSync(force = true)
+    fun refresh() {
+        syncRepository.triggerSync(force = true)
+        viewModelScope.launch(Dispatchers.IO) { fetchRecentAlbumIds() }
+    }
 
     fun setSortOrder(order: AlbumSortOrder) {
         _sortOrder.value = order
+    }
+
+    private suspend fun fetchRecentAlbumIds() {
+        try {
+            _recentAlbumIds.value = apiClient?.getAlbumList2("recent", 50)
+                ?.map { it.id }
+                ?: emptyList()
+        } catch (e: Exception) {
+            Timber.tag("[UI]").w(e, "fetchRecentAlbumIds failed")
+        } finally {
+            _recentsLoaded.value = true
+        }
     }
 
     // ─── Scroll position (firstVisibleItemIndex, firstVisibleItemScrollOffset) ─
@@ -142,7 +180,7 @@ class AlbumGridViewModel(
 
     private fun buildGridItems(
         albums: List<AlbumEntity>,
-        recentlyPlayed: List<RecentlyPlayedEntity>,
+        recentAlbumIds: List<String>,
         order: AlbumSortOrder,
     ): List<AlbumGridItem> = when (order) {
 
@@ -194,20 +232,14 @@ class AlbumGridViewModel(
         }
 
         AlbumSortOrder.RECENTLY_PLAYED -> {
-            val recentIds = recentlyPlayed.map { it.albumId }
-            val recentSet = recentIds.toHashSet()
+            val recentSet = recentAlbumIds.toHashSet()
             albums.filter { it.id in recentSet }
-                .sortedBy { recentIds.indexOf(it.id) }
+                .sortedBy { recentAlbumIds.indexOf(it.id) }
                 .map { AlbumGridItem.Album(it) }
         }
 
         AlbumSortOrder.STARRED ->
             albums.filter { it.starred }
-                .sortedBy { it.title.lowercase() }
-                .map { AlbumGridItem.Album(it) }
-
-        AlbumSortOrder.DOWNLOADED ->
-            albums.filter { it.downloadState == DownloadState.COMPLETE }
                 .sortedBy { it.title.lowercase() }
                 .map { AlbumGridItem.Album(it) }
     }

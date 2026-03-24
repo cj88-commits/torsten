@@ -13,6 +13,7 @@ import com.torsten.app.data.metabrainz.MusicBrainzClient
 import com.torsten.app.data.network.ConnectivityMonitor
 import com.torsten.app.data.queue.QueueManager
 import com.torsten.app.data.recommendation.ArtistTopTracksRepository
+import com.torsten.app.data.recommendation.InstantMixRepositoryV2
 import com.torsten.app.data.repository.SyncRepository
 import com.torsten.app.ui.initCoilImageLoader
 import kotlinx.coroutines.flow.first
@@ -48,12 +49,23 @@ class TorstenApp : Application() {
         )
     }
 
+    val instantMixRepositoryV2: InstantMixRepositoryV2 by lazy {
+        InstantMixRepositoryV2(
+            serverConfigStore = ServerConfigStore(this),
+            songDao = database.songDao(),
+            artistMbidCacheDao = database.artistMbidCacheDao(),
+            musicBrainzClient = MusicBrainzClient(),
+            listenBrainzClient = ListenBrainzClient(),
+        )
+    }
+
     val artistTopTracksRepository: ArtistTopTracksRepository by lazy {
         ArtistTopTracksRepository(
             serverConfigStore = ServerConfigStore(this),
             songDao = database.songDao(),
             albumDao = database.albumDao(),
             artistMbidCacheDao = database.artistMbidCacheDao(),
+            artistTopTracksCacheDao = database.artistTopTracksCacheDao(),
             musicBrainzClient = MusicBrainzClient(),
             listenBrainzClient = ListenBrainzClient(),
         )

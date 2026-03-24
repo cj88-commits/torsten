@@ -32,8 +32,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,8 +49,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.data.api.dto.PlaylistDto
 import com.torsten.app.ui.common.DarkBackground
+import com.torsten.app.ui.common.LibraryHeader
 import com.torsten.app.ui.common.LibraryTab
-import com.torsten.app.ui.common.LibraryTabRow
 import com.torsten.app.ui.common.shimmerBrush
 
 private fun formatDurationSecs(seconds: Int): String {
@@ -124,9 +122,10 @@ fun PlaylistsScreen(
         containerColor = DarkBackground,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Library", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0A0A0A)),
+            LibraryHeader(
+                currentTab = LibraryTab.PLAYLISTS,
+                onNavigateToAlbums = onNavigateToAlbums,
+                onNavigateToArtists = onNavigateToArtists,
             )
         },
         floatingActionButton = {
@@ -145,13 +144,6 @@ fun PlaylistsScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            LibraryTabRow(
-                selected = LibraryTab.PLAYLISTS,
-                onAlbumsClick = onNavigateToAlbums,
-                onArtistsClick = onNavigateToArtists,
-                onPlaylistsClick = {},
-            )
-
             when {
                 state.isLoading -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(4) { ShimmerPlaylistRow() }
@@ -163,7 +155,10 @@ fun PlaylistsScreen(
                     }
                 }
                 state.playlists.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
                         Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(48.dp))
                         Text("No playlists yet", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.5f))
                         TextButton(onClick = { showCreateDialog = true }) { Text("Create one", color = Color.White) }
@@ -190,16 +185,16 @@ private fun ShimmerPlaylistRow() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .size(72.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(shimmer),
         )
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Box(
                 modifier = Modifier
@@ -230,13 +225,13 @@ private fun PlaylistRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .size(72.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF1A1A1A)),
             contentAlignment = Alignment.Center,
         ) {
@@ -248,11 +243,11 @@ private fun PlaylistRow(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(24.dp))
+                Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(28.dp))
             }
         }
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(16.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(

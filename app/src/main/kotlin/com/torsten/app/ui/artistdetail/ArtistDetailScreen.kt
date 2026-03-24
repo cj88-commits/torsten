@@ -81,6 +81,7 @@ fun ArtistDetailScreen(
     val fullTopTracks by viewModel.fullTopTracks.collectAsStateWithLifecycle()
     val artistImageUrl by viewModel.artistLargeImageUrl.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val topTracksLoading by viewModel.topTracksLoading.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
 
     val scope = rememberCoroutineScope()
@@ -143,7 +144,10 @@ fun ArtistDetailScreen(
             }
 
             // ── 3. Top Tracks ─────────────────────────────────────────────────
-            if (displayTopTracks.isNotEmpty()) {
+            if (topTracksLoading) {
+                item { SectionHeader(title = "Top Tracks") }
+                items(count = 5) { ShimmerTrackRow() }
+            } else if (displayTopTracks.isNotEmpty()) {
                 item { SectionHeader(title = "Top Tracks") }
                 itemsIndexed(displayTopTracks) { index, track ->
                     val fullIndex = fullTopTracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
@@ -155,9 +159,6 @@ fun ArtistDetailScreen(
                         onClick = { playLbTracks(startIndex = fullIndex) },
                     )
                 }
-            } else if (isLoading && topTracks.isEmpty()) {
-                item { SectionHeader(title = "Top Tracks") }
-                items(count = 5) { ShimmerTrackRow() }
             } else if (topTracks.isNotEmpty()) {
                 item { SectionHeader(title = "Top Tracks") }
                 itemsIndexed(topTracks) { index, track ->
@@ -174,7 +175,7 @@ fun ArtistDetailScreen(
             // ── 4. Albums ─────────────────────────────────────────────────────
             item {
                 HorizontalDivider(
-                    modifier = Modifier.padding(top = if (topTracks.isNotEmpty() || isLoading) 8.dp else 0.dp),
+                    modifier = Modifier.padding(top = if (topTracks.isNotEmpty() || topTracksLoading) 8.dp else 0.dp),
                     color = TorstenColor.Surface,
                 )
                 SectionHeader(title = "Albums")

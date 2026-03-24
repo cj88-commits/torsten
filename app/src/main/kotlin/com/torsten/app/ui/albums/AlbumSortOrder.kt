@@ -5,5 +5,4 @@ enum class AlbumSortOrder(val label: String) {
     BY_YEAR("By Year"),
     RECENTLY_PLAYED("Recently Played"),
     STARRED("Starred"),
-    DOWNLOADED("Downloaded"),
 }
