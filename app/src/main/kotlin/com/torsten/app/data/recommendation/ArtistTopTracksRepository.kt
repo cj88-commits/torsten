@@ -38,7 +38,10 @@ class ArtistTopTracksRepository(
             val ordered = ids.mapNotNull { songMap[it] }
             if (ordered.isNotEmpty()) {
                 Timber.tag("[ArtistTop]").d("Cache hit for $artistName: ${ordered.size} tracks")
-                return ArtistTopResult(displayTracks = ordered.take(5), fullTracks = ordered.take(20))
+                return ArtistTopResult(
+                    displayTracks = selectDiverseDisplay(ordered),
+                    fullTracks = ordered.take(20),
+                )
             }
         }
 
@@ -154,6 +157,32 @@ class ArtistTopTracksRepository(
         )
         Timber.tag("[ArtistTop]").d("Resolved MBID for $artistName: $mbid")
         return mbid
+    }
+
+    /**
+     * Picks up to 5 display tracks from an already LB-ranked list of songs,
+     * ensuring album diversity. Used on cache hits where songs are pre-ordered
+     * and pre-deduplicated, so only the album-diversity pass is needed.
+     */
+    private fun selectDiverseDisplay(tracks: List<SongEntity>): List<SongEntity> {
+        val seenAlbumIds = mutableSetOf<String>()
+        val result = mutableListOf<SongEntity>()
+        // First pass: one song per album in ranked order
+        for (song in tracks) {
+            if (result.size >= 5) break
+            if (song.albumId in seenAlbumIds) continue
+            seenAlbumIds.add(song.albumId)
+            result.add(song)
+        }
+        // Second pass: fill any remaining slots ignoring album diversity
+        if (result.size < 5) {
+            val resultIds = result.map { it.id }.toHashSet()
+            for (song in tracks) {
+                if (result.size >= 5) break
+                if (song.id !in resultIds) result.add(song)
+            }
+        }
+        return result
     }
 
     private fun buildDisplayTracks(matched: List<MatchedSong>, artistName: String): List<SongEntity> {
