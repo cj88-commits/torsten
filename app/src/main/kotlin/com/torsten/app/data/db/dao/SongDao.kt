@@ -22,6 +22,16 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE albumId = :albumId ORDER BY discNumber ASC, trackNumber ASC")
     suspend fun getByAlbum(albumId: String): List<SongEntity>
 
+    @Query("SELECT * FROM songs WHERE artistId = :artistId")
+    suspend fun getByArtistId(artistId: String): List<SongEntity>
+
+    @Query("""
+        SELECT s.* FROM songs s
+        INNER JOIN albums a ON s.albumId = a.id
+        WHERE lower(a.artistName) = lower(:artistName)
+    """)
+    suspend fun getSongsByArtistName(artistName: String): List<SongEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(songs: List<SongEntity>)
 

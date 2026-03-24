@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.db.entity.AlbumEntity
+import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.ui.common.AlbumCardItem
 import com.torsten.app.ui.common.EmptyState
 import com.torsten.app.ui.common.SectionHeader
@@ -76,6 +77,8 @@ fun ArtistDetailScreen(
     val artist by viewModel.artist.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val topTracks by viewModel.topTracks.collectAsStateWithLifecycle()
+    val displayTopTracks by viewModel.displayTopTracks.collectAsStateWithLifecycle()
+    val fullTopTracks by viewModel.fullTopTracks.collectAsStateWithLifecycle()
     val artistImageUrl by viewModel.artistLargeImageUrl.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
@@ -97,6 +100,15 @@ fun ArtistDetailScreen(
         scope.launch {
             val config = viewModel.getServerConfig().first()
             playbackViewModel.playFromSongDtos(topTracks, config, shuffle = shuffle, startIndex = startIndex)
+        }
+    }
+
+    fun playLbTracks(startIndex: Int) {
+        scope.launch {
+            val dtos = viewModel.fullTopTracksForPlayback()
+            if (dtos.isEmpty()) return@launch
+            val config = viewModel.getServerConfig().first()
+            playbackViewModel.playFromSongDtos(dtos, config, startIndex = startIndex)
         }
     }
 
@@ -131,7 +143,19 @@ fun ArtistDetailScreen(
             }
 
             // ── 3. Top Tracks ─────────────────────────────────────────────────
-            if (isLoading && topTracks.isEmpty()) {
+            if (displayTopTracks.isNotEmpty()) {
+                item { SectionHeader(title = "Top Tracks") }
+                itemsIndexed(displayTopTracks) { index, track ->
+                    val fullIndex = fullTopTracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+                    LbTopTrackRow(
+                        number = index + 1,
+                        song = track,
+                        coverArtUrl = viewModel.getCoverArtUrlForSong(track, 150),
+                        isOnline = isOnline,
+                        onClick = { playLbTracks(startIndex = fullIndex) },
+                    )
+                }
+            } else if (isLoading && topTracks.isEmpty()) {
                 item { SectionHeader(title = "Top Tracks") }
                 items(count = 5) { ShimmerTrackRow() }
             } else if (topTracks.isNotEmpty()) {
@@ -436,6 +460,60 @@ private fun TopTrackRow(
         if (duration != null && duration > 0) {
             Text(
                 text = formatDuration(duration),
+                style = MaterialTheme.typography.bodySmall,
+                color = TorstenColor.TextTertiary,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+// ─── LB top track row (SongEntity) ────────────────────────────────────────────
+
+@Composable
+private fun LbTopTrackRow(
+    number: Int,
+    song: SongEntity,
+    coverArtUrl: String?,
+    isOnline: Boolean,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = number.toString(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TorstenColor.TextTertiary,
+            modifier = Modifier.width(24.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        AsyncImage(
+            model = coverArtImageRequest(context, coverArtUrl, null, isOnline),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(TorstenColor.ElevatedSurface),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = song.title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (song.duration > 0) {
+            Text(
+                text = formatDuration(song.duration),
                 style = MaterialTheme.typography.bodySmall,
                 color = TorstenColor.TextTertiary,
                 modifier = Modifier.padding(start = 8.dp),

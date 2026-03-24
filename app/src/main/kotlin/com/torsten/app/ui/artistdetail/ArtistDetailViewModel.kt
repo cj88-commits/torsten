@@ -12,7 +12,9 @@ import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.db.AppDatabase
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.ArtistEntity
+import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.network.ConnectivityMonitor
+import com.torsten.app.data.recommendation.ArtistTopTracksRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -25,12 +27,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ArtistDetailViewModel(
     private val db: AppDatabase,
     private val artistId: String,
     private val configStore: ServerConfigStore,
     private val connectivityMonitor: ConnectivityMonitor,
+    private val artistTopTracksRepository: ArtistTopTracksRepository,
 ) : ViewModel() {
 
     val artist: StateFlow<ArtistEntity?> = db.artistDao()
@@ -48,6 +52,12 @@ class ArtistDetailViewModel(
 
     private val _topTracks = MutableStateFlow<List<SongDto>>(emptyList())
     val topTracks: StateFlow<List<SongDto>> = _topTracks.asStateFlow()
+
+    private val _displayTopTracks = MutableStateFlow<List<SongEntity>>(emptyList())
+    val displayTopTracks: StateFlow<List<SongEntity>> = _displayTopTracks.asStateFlow()
+
+    private val _fullTopTracks = MutableStateFlow<List<SongEntity>>(emptyList())
+    val fullTopTracks: StateFlow<List<SongEntity>> = _fullTopTracks.asStateFlow()
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -75,12 +85,50 @@ class ArtistDetailViewModel(
             }
             _isLoading.value = false
         }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val artistName = db.artistDao().observeById(artistId).first()?.name ?: return@launch
+            val result = runCatching {
+                artistTopTracksRepository.getTopTracks(artistId, artistName)
+            }.getOrNull() ?: return@launch
+            _displayTopTracks.value = result.displayTracks
+            _fullTopTracks.value = result.fullTracks
+        }
     }
 
     val isOnline: StateFlow<Boolean> get() = connectivityMonitor.isOnline
 
     fun getCoverArtUrl(coverArtId: String, size: Int = 300): String? =
         apiClient?.getCoverArtUrl(coverArtId, size)
+
+    fun getCoverArtUrlForSong(song: SongEntity, size: Int = 150): String? {
+        val coverArtId = albums.value.firstOrNull { it.id == song.albumId }?.coverArtId
+            ?: return null
+        return apiClient?.getCoverArtUrl(coverArtId, size)
+    }
+
+    /** Converts fullTopTracks to SongDtos for playback, looking up album metadata from Room. */
+    suspend fun fullTopTracksForPlayback(): List<SongDto> = withContext(Dispatchers.IO) {
+        _fullTopTracks.value.mapNotNull { song ->
+            val album = db.albumDao().getById(song.albumId) ?: return@mapNotNull null
+            SongDto(
+                id = song.id,
+                title = song.title,
+                album = album.title,
+                albumId = song.albumId,
+                artist = album.artistName,
+                artistId = song.artistId,
+                track = song.trackNumber,
+                discNumber = song.discNumber,
+                duration = song.duration,
+                bitRate = song.bitRate,
+                suffix = song.suffix,
+                contentType = song.contentType,
+                coverArt = album.coverArtId,
+                starred = if (song.starred) "true" else null,
+            )
+        }
+    }
 
     fun getServerConfig(): Flow<ServerConfig> = configStore.serverConfig
 }
@@ -97,6 +145,7 @@ class ArtistDetailViewModelFactory(
             artistId = artistId,
             configStore = ServerConfigStore(context.applicationContext),
             connectivityMonitor = app.connectivityMonitor,
+            artistTopTracksRepository = app.artistTopTracksRepository,
         ) as T
     }
 }

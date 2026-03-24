@@ -8,8 +8,11 @@ import com.torsten.app.data.datastore.ImageCacheConfigStore
 import com.torsten.app.data.datastore.PlaybackConfigStore
 import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.download.DownloadRepository
+import com.torsten.app.data.metabrainz.ListenBrainzClient
+import com.torsten.app.data.metabrainz.MusicBrainzClient
 import com.torsten.app.data.network.ConnectivityMonitor
 import com.torsten.app.data.queue.QueueManager
+import com.torsten.app.data.recommendation.ArtistTopTracksRepository
 import com.torsten.app.data.repository.SyncRepository
 import com.torsten.app.ui.initCoilImageLoader
 import kotlinx.coroutines.flow.first
@@ -42,6 +45,17 @@ class TorstenApp : Application() {
             db = database,
             configStore = ServerConfigStore(this),
             connectivityMonitor = connectivityMonitor,
+        )
+    }
+
+    val artistTopTracksRepository: ArtistTopTracksRepository by lazy {
+        ArtistTopTracksRepository(
+            serverConfigStore = ServerConfigStore(this),
+            songDao = database.songDao(),
+            albumDao = database.albumDao(),
+            artistMbidCacheDao = database.artistMbidCacheDao(),
+            musicBrainzClient = MusicBrainzClient(),
+            listenBrainzClient = ListenBrainzClient(),
         )
     }
 

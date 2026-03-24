@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.torsten.app.data.db.dao.AlbumDao
 import com.torsten.app.data.db.dao.ArtistDao
+import com.torsten.app.data.db.dao.ArtistMbidCacheDao
 import com.torsten.app.data.db.dao.PendingStarDao
 import com.torsten.app.data.db.dao.PlaybackPositionDao
 import com.torsten.app.data.db.dao.RecentlyPlayedDao
@@ -14,6 +15,7 @@ import com.torsten.app.data.db.dao.SongDao
 import com.torsten.app.data.db.dao.SyncMetadataDao
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.ArtistEntity
+import com.torsten.app.data.db.entity.ArtistMbidCacheEntity
 import com.torsten.app.data.db.entity.PendingStarEntity
 import com.torsten.app.data.db.entity.PlaybackPositionEntity
 import com.torsten.app.data.db.entity.RecentlyPlayedEntity
@@ -34,8 +36,9 @@ import com.torsten.app.data.db.entity.SyncMetadataEntity
         PlaybackPositionEntity::class,
         SyncMetadataEntity::class,
         PendingStarEntity::class,
+        ArtistMbidCacheEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -48,6 +51,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playbackPositionDao(): PlaybackPositionDao
     abstract fun syncMetadataDao(): SyncMetadataDao
     abstract fun pendingStarDao(): PendingStarDao
+    abstract fun artistMbidCacheDao(): ArtistMbidCacheDao
 
     companion object {
         @Volatile
