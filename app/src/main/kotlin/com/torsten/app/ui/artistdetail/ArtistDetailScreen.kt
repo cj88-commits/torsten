@@ -22,6 +22,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
@@ -30,13 +33,21 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.db.entity.AlbumEntity
+import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.ui.common.AlbumCardItem
 import com.torsten.app.ui.common.EmptyState
@@ -66,12 +78,14 @@ import kotlinx.coroutines.launch
 
 private val HeroHeight = 260.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtistDetailScreen(
     viewModel: ArtistDetailViewModel,
     playbackViewModel: PlaybackViewModel,
     onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
     onNavigateUp: () -> Unit,
+    onAddToPlaylist: (songId: String) -> Unit = {},
     onStartInstantMix: (seed: SongDto) -> Unit = {},
 ) {
     val artist by viewModel.artist.collectAsStateWithLifecycle()
@@ -86,6 +100,10 @@ fun ArtistDetailScreen(
 
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var contextLbSong by remember { mutableStateOf<SongEntity?>(null) }
+    var contextSongDto by remember { mutableStateOf<SongDto?>(null) }
+    val contextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Fade-in factor for the floating top bar (0=hero visible, 1=scrolled past)
     val heroHeightPx = with(LocalDensity.current) { HeroHeight.toPx() }
@@ -96,20 +114,20 @@ fun ArtistDetailScreen(
         }
     }
 
-    fun playTracks(shuffle: Boolean, startIndex: Int = 0) {
+    fun playTracks(shuffle: Boolean, startIndex: Int = 0, preservePriority: Boolean = false) {
         if (topTracks.isEmpty()) return
         scope.launch {
             val config = viewModel.getServerConfig().first()
-            playbackViewModel.playFromSongDtos(topTracks, config, shuffle = shuffle, startIndex = startIndex)
+            playbackViewModel.playFromSongDtos(topTracks, config, shuffle = shuffle, startIndex = startIndex, preservePriorityQueue = preservePriority)
         }
     }
 
-    fun playLbTracks(startIndex: Int) {
+    fun playLbTracks(startIndex: Int, preservePriority: Boolean = false) {
         scope.launch {
             val dtos = viewModel.fullTopTracksForPlayback()
             if (dtos.isEmpty()) return@launch
             val config = viewModel.getServerConfig().first()
-            playbackViewModel.playFromSongDtos(dtos, config, startIndex = startIndex)
+            playbackViewModel.playFromSongDtos(dtos, config, startIndex = startIndex, preservePriorityQueue = preservePriority)
         }
     }
 
@@ -156,7 +174,8 @@ fun ArtistDetailScreen(
                         song = track,
                         coverArtUrl = viewModel.getCoverArtUrlForSong(track, 150),
                         isOnline = isOnline,
-                        onClick = { playLbTracks(startIndex = fullIndex) },
+                        onClick = { playLbTracks(startIndex = fullIndex, preservePriority = true) },
+                        onMenuClick = { contextLbSong = track },
                     )
                 }
             } else if (topTracks.isNotEmpty()) {
@@ -167,7 +186,8 @@ fun ArtistDetailScreen(
                         song = track,
                         coverArtUrl = track.coverArt?.let { viewModel.getCoverArtUrl(it, 150) },
                         isOnline = isOnline,
-                        onClick = { playTracks(shuffle = false, startIndex = index) },
+                        onClick = { playTracks(shuffle = false, startIndex = index, preservePriority = true) },
+                        onMenuClick = { contextSongDto = track },
                     )
                 }
             }
@@ -202,6 +222,220 @@ fun ArtistDetailScreen(
                 }
             }
         }
+
+        // ── Context menu: LB top track (SongEntity) ──────────────────────────
+        if (contextLbSong != null) {
+            ModalBottomSheet(
+                onDismissRequest = { contextLbSong = null },
+                sheetState = contextSheetState,
+                containerColor = TorstenColor.Surface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            ) {
+                val song = contextLbSong!!
+                Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                    Text(
+                        text = song.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    )
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    TextButton(
+                        onClick = {
+                            contextLbSong = null
+                            scope.launch {
+                                val config = viewModel.getServerConfig().first()
+                                val coverArtUrl = viewModel.getCoverArtUrlForSong(song, 300)
+                                val stubAlbum = AlbumEntity(
+                                    id = song.albumId.ifEmpty { "stub_${song.id}" },
+                                    title = "",
+                                    artistId = song.artistId,
+                                    artistName = artist?.name.orEmpty(),
+                                    year = null,
+                                    genre = null,
+                                    songCount = 1,
+                                    duration = song.duration,
+                                    coverArtId = null,
+                                    starred = false,
+                                    downloadState = DownloadState.NONE,
+                                    downloadProgress = 0,
+                                    downloadedAt = null,
+                                    lastUpdated = System.currentTimeMillis(),
+                                )
+                                playbackViewModel.enqueueNextSong(song, stubAlbum, config, coverArtUrl)
+                                snackbarHostState.showSnackbar("Added to queue")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Play next", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            contextLbSong = null
+                            scope.launch {
+                                val config = viewModel.getServerConfig().first()
+                                val coverArtUrl = viewModel.getCoverArtUrlForSong(song, 300)
+                                val stubAlbum = AlbumEntity(
+                                    id = song.albumId.ifEmpty { "stub_${song.id}" },
+                                    title = "",
+                                    artistId = song.artistId,
+                                    artistName = artist?.name.orEmpty(),
+                                    year = null,
+                                    genre = null,
+                                    songCount = 1,
+                                    duration = song.duration,
+                                    coverArtId = null,
+                                    starred = false,
+                                    downloadState = DownloadState.NONE,
+                                    downloadProgress = 0,
+                                    downloadedAt = null,
+                                    lastUpdated = System.currentTimeMillis(),
+                                )
+                                playbackViewModel.enqueueNextSong(song, stubAlbum, config, coverArtUrl)
+                                snackbarHostState.showSnackbar("Added to queue")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Add to queue", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            val songId = contextLbSong?.id ?: return@TextButton
+                            contextLbSong = null
+                            onAddToPlaylist(songId)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Add to playlist", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            val s = contextLbSong ?: return@TextButton
+                            contextLbSong = null
+                            onStartInstantMix(
+                                SongDto(
+                                    id = s.id,
+                                    title = s.title,
+                                    artist = artist?.name.orEmpty(),
+                                    artistId = s.artistId,
+                                    album = "",
+                                    albumId = s.albumId,
+                                    duration = s.duration,
+                                    coverArt = null,
+                                    genre = null,
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.Filled.Shuffle, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Start instant mix", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        // ── Context menu: Subsonic top track (SongDto) ────────────────────────
+        if (contextSongDto != null) {
+            ModalBottomSheet(
+                onDismissRequest = { contextSongDto = null },
+                sheetState = contextSheetState,
+                containerColor = TorstenColor.Surface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            ) {
+                val song = contextSongDto!!
+                Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                    Text(
+                        text = song.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    )
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    TextButton(
+                        onClick = {
+                            contextSongDto = null
+                            scope.launch {
+                                val config = viewModel.getServerConfig().first()
+                                playbackViewModel.enqueueNext(song, config)
+                                snackbarHostState.showSnackbar("Added to queue")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Play next", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            contextSongDto = null
+                            scope.launch {
+                                val config = viewModel.getServerConfig().first()
+                                playbackViewModel.enqueueNext(song, config)
+                                snackbarHostState.showSnackbar("Added to queue")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Add to queue", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            val songId = contextSongDto?.id ?: return@TextButton
+                            contextSongDto = null
+                            onAddToPlaylist(songId)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Add to playlist", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            val s = contextSongDto ?: return@TextButton
+                            contextSongDto = null
+                            onStartInstantMix(s)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.Filled.Shuffle, null, tint = Color.White.copy(alpha = 0.7f))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Start instant mix", color = Color.White, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        // ── Snackbar ──────────────────────────────────────────────────────────
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
 
         // ── Floating top bar (back arrow + fading title) ──────────────────────
         Row(
@@ -404,6 +638,7 @@ private fun TopTrackRow(
     coverArtUrl: String?,
     isOnline: Boolean,
     onClick: () -> Unit,
+    onMenuClick: () -> Unit,
 ) {
     val context = LocalContext.current
     Row(
@@ -466,6 +701,15 @@ private fun TopTrackRow(
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
+
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(36.dp)) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "More options",
+                tint = Color.White.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 
@@ -478,6 +722,7 @@ private fun LbTopTrackRow(
     coverArtUrl: String?,
     isOnline: Boolean,
     onClick: () -> Unit,
+    onMenuClick: () -> Unit,
 ) {
     val context = LocalContext.current
     Row(
@@ -518,6 +763,15 @@ private fun LbTopTrackRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = TorstenColor.TextTertiary,
                 modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(36.dp)) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "More options",
+                tint = Color.White.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp),
             )
         }
     }

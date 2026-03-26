@@ -98,4 +98,6 @@ dependencies {
     implementation(libs.work.runtime.ktx)
 
     debugImplementation(libs.androidx.ui.tooling)
+
+    testImplementation(libs.junit)
 }

@@ -19,7 +19,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
@@ -59,6 +63,7 @@ fun HomeScreen(
     onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
     onGenreClick: (genre: String) -> Unit = {},
     onSeeAll: (listType: String, title: String) -> Unit = { _, _ -> },
+    onSettingsClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val greeting = remember {
@@ -99,13 +104,27 @@ fun HomeScreen(
                                 color = Color.White.copy(alpha = 0.5f),
                                 modifier = Modifier.padding(horizontal = RowPadding),
                             )
-                            Text(
-                                text = "Torsten",
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = RowPadding),
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = RowPadding, end = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "Torsten",
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                )
+                                IconButton(onClick = onSettingsClick) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "Settings",
+                                        tint = Color.White.copy(alpha = 0.7f),
+                                    )
+                                }
+                            }
                             Spacer(Modifier.height(16.dp))
                         }
 

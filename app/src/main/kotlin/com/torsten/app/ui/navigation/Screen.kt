@@ -31,6 +31,7 @@ sealed class Screen(val route: String) {
             "album_list/$listType?title=${Uri.encode(title)}"
     }
     data object Downloads : Screen("downloads")
+    data object Startup : Screen("startup")
     data object ServerConfig : Screen("server_config?firstLaunch={firstLaunch}") {
         fun createRoute(isFirstLaunch: Boolean) = "server_config?firstLaunch=$isFirstLaunch"
     }

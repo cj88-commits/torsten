@@ -7,10 +7,14 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -18,7 +22,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,9 +41,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.torsten.app.data.api.SubsonicApiClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -110,7 +118,6 @@ private val tabRoutes = setOf(
     Screen.Artists.route,
     Screen.Playlists.route,
     Screen.Downloads.route,
-    Screen.Settings.route,
 )
 
 // Routes that belong to the Library tab (so Library tab stays highlighted)
@@ -126,6 +133,9 @@ fun AppNavigation() {
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
     val showBottomBar = currentRoute in tabRoutes
+
+    // Set to true by the Startup check when the server is unreachable/unconfigured
+    var pendingConnectSnackbar by remember { mutableStateOf(false) }
 
     // Callback updated by the Random composable; invoked when the Library tab is re-tapped while on Random
     var randomReselectCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -184,7 +194,7 @@ fun AppNavigation() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Settings.route,
+            startDestination = Screen.Startup.route,
             modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
             // Default: fade for tab-to-tab transitions
             enterTransition = { fadeIn(animationSpec = tween(250)) },
@@ -192,6 +202,44 @@ fun AppNavigation() {
             popEnterTransition = { fadeIn(animationSpec = tween(250)) },
             popExitTransition = { fadeOut(animationSpec = tween(200)) },
         ) {
+            // ── Startup check ─────────────────────────────────────────────────
+            composable(Screen.Startup.route) {
+                LaunchedEffect(Unit) {
+                    val config = serverConfigStore.serverConfig.first()
+                    if (config.isConfigured) {
+                        val reachable = withTimeoutOrNull(3_000L) {
+                            withContext(Dispatchers.IO) {
+                                runCatching { SubsonicApiClient(config).ping() }.isSuccess
+                            }
+                        } ?: false
+
+                        if (reachable) {
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(Screen.Startup.route) { inclusive = true }
+                            }
+                        } else {
+                            pendingConnectSnackbar = true
+                            navController.navigate(Screen.Settings.route) {
+                                popUpTo(Screen.Startup.route) { inclusive = true }
+                            }
+                        }
+                    } else {
+                        pendingConnectSnackbar = true
+                        navController.navigate(Screen.Settings.route) {
+                            popUpTo(Screen.Startup.route) { inclusive = true }
+                        }
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0A0A0A)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = Color.White.copy(alpha = 0.6f))
+                }
+            }
+
             composable(Screen.Home.route) {
                 val vm: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
                 HomeScreen(
@@ -204,6 +252,11 @@ fun AppNavigation() {
                     },
                     onSeeAll = { listType, title ->
                         navController.navigate(Screen.AlbumList.createRoute(listType, title))
+                    },
+                    onSettingsClick = {
+                        navController.navigate(Screen.Settings.route) {
+                            launchSingleTop = true
+                        }
                     },
                 )
             }
@@ -235,7 +288,13 @@ fun AppNavigation() {
                 )
             }
 
-            composable(Screen.Queue.route) {
+            composable(
+                Screen.Queue.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(280)) },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(240)) },
+                popEnterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(280)) },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(240)) },
+            ) {
                 QueueScreen(
                     playbackViewModel = playbackViewModel,
                     navController = navController,
@@ -274,13 +333,11 @@ fun AppNavigation() {
                 val vm: SettingsViewModel = viewModel(settingsEntry, factory = SettingsViewModelFactory(context))
                 val isFirstLaunch = navController.previousBackStackEntry == null
 
-                if (isFirstLaunch) {
-                    LaunchedEffect(Unit) {
-                        if (serverConfigStore.serverConfig.first().isConfigured) {
-                            navController.navigate(Screen.Albums.route) {
-                                popUpTo(Screen.Settings.route) { inclusive = true }
-                            }
-                        }
+                // Show "Connect to your server" snackbar when arriving from a failed startup check
+                LaunchedEffect(pendingConnectSnackbar) {
+                    if (pendingConnectSnackbar) {
+                        pendingConnectSnackbar = false
+                        vm.showConnectSnackbar()
                     }
                 }
 
@@ -312,9 +369,9 @@ fun AppNavigation() {
                 // call is issued from the NavHost composable scope, which is safer.
                 LaunchedEffect(vm) {
                     vm.navigateToGrid.collect {
-                        val popped = navController.popBackStack(Screen.Albums.route, inclusive = false)
+                        val popped = navController.popBackStack(Screen.Home.route, inclusive = false)
                         if (!popped) {
-                            navController.navigate(Screen.Albums.route) {
+                            navController.navigate(Screen.Home.route) {
                                 popUpTo(Screen.Settings.route) { inclusive = true }
                             }
                         }
@@ -542,8 +599,16 @@ fun AppNavigation() {
             composable(
                 Screen.NowPlaying.route,
                 enterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(350)) },
-                exitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300)) },
-                popEnterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(350)) },
+                exitTransition = {
+                    // Queue slides over NowPlaying — keep NowPlaying frozen underneath.
+                    if (targetState.destination.route == Screen.Queue.route) fadeOut(tween(0))
+                    else slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300))
+                },
+                popEnterTransition = {
+                    // Queue is dismissed — NowPlaying reappears instantly underneath.
+                    if (initialState.destination.route == Screen.Queue.route) fadeIn(tween(0))
+                    else slideInVertically(initialOffsetY = { it }, animationSpec = tween(350))
+                },
                 popExitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(300)) },
             ) {
                 NowPlayingScreen(
@@ -559,11 +624,10 @@ fun AppNavigation() {
                         navController.navigate(Screen.AlbumDetail.createRoute(albumId))
                     },
                     onNavigateToQueue = {
-                        navController.popBackStack()
+                        // Push Queue on top of NowPlaying so it slides over it;
+                        // pressing back (or swiping down) returns to NowPlaying.
                         navController.navigate(Screen.Queue.route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
-                            restoreState = true
                         }
                     },
                     onStartInstantMix = {
@@ -692,21 +756,6 @@ private fun AppBottomBar(
             },
             icon = { Icon(Icons.Filled.Download, contentDescription = "Saved") },
             label = { Text("Saved") },
-            colors = itemColors,
-        )
-
-        // ── Settings ──────────────────────────────────────────────────────────
-        NavigationBarItem(
-            selected = currentRoute == Screen.Settings.route,
-            onClick = {
-                navController.navigate(Screen.Settings.route) {
-                    popUpTo(Screen.Home.route) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
-            icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-            label = { Text("Settings") },
             colors = itemColors,
         )
     }

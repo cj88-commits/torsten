@@ -120,34 +120,20 @@ class InstantMixRepositoryV2(
 
         if (currentMixToken.get() != myToken) return emptyList()
 
-        // ── 5. Diversity cap ──────────────────────────────────────────────────
-        // Pool order is already correct: LB-matched songs first (ranked by LB),
-        // then Subsonic songs in server order.
+        // ── 5. Diversity cap + backfill ───────────────────────────────────────
+        // Pool order: LB-matched songs first (ranked by LB), then Subsonic in server order.
+        val poolList = pool.toList()
         Timber.tag(tag).d("Pool before cap: ${pool.size}")
 
-        // Try strict cap (5/artist). Relax to 8/artist if the result falls below 19.
-        var capped = applyDiversityCap(pool, 5)
-        Timber.tag(tag).d("After cap-5: ${capped.size}")
+        val capped = InstantMixSelector.applyDiversityCap(poolList, target = 19, initialCap = 5, relaxedCap = 8)
+        Timber.tag(tag).d("After applyDiversityCap: ${capped.size}")
 
-        if (capped.size < 19) {
-            capped = applyDiversityCap(pool, 8)
-            Timber.tag(tag).d("After cap-8 (relaxed): ${capped.size}")
-        }
+        val filled = InstantMixSelector.fillToTarget(capped, poolList, target = 19)
+        Timber.tag(tag).d("After fillToTarget: ${filled.size}")
 
-        // Backfill from the ranked pool to reach 19 when both caps fall short.
-        if (capped.size < 19) {
-            val includedIds = capped.mapTo(mutableSetOf()) { it.id }
-            for (song in pool) {
-                if (capped.size >= 19) break
-                if (includedIds.add(song.id)) capped.add(song)
-            }
-            Timber.tag(tag).d("After backfill: ${capped.size}")
-        }
-
-        // Always exactly seed + 19 = 20 tracks.
-        val trimmed = capped.take(19)
-        val result = listOf(seedSong) + trimmed
-        Timber.tag(tag).d("Final mix: ${result.size} tracks (seed + ${trimmed.size})")
+        // ── 6. Final assembly with artist interleaving ────────────────────────
+        val result = InstantMixSelector.interleaveMix(seedSong, filled, target = 20)
+        Timber.tag(tag).d("Final mix: ${result.size} tracks (seed + ${result.size - 1})")
         return result
     }
 
@@ -207,20 +193,6 @@ class InstantMixRepositoryV2(
             pool.add(entity)
             usedIds.add(dto.id)
         }
-    }
-
-    private fun applyDiversityCap(pool: List<SongEntity>, cap: Int): MutableList<SongEntity> {
-        val counts = mutableMapOf<String, Int>()
-        val result = mutableListOf<SongEntity>()
-        for (song in pool) {
-            val key = song.artistId.ifEmpty { song.id }
-            val count = counts.getOrDefault(key, 0)
-            if (count < cap) {
-                result.add(song)
-                counts[key] = count + 1
-            }
-        }
-        return result
     }
 
     private suspend fun resolveMbid(artistId: String, artistName: String): String? {

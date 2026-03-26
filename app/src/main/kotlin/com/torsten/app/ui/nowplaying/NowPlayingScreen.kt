@@ -1,10 +1,12 @@
 package com.torsten.app.ui.nowplaying
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,8 +26,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -156,23 +160,48 @@ fun NowPlayingScreen(
                             )
                         }
                     }
-                    IconButton(onClick = onNavigateToQueue) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                            contentDescription = "Queue",
-                            tint = Color.White,
-                        )
+                    IconButton(
+                        onClick = onNavigateToQueue,
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Canvas(modifier = Modifier.size(22.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val sw = h * 0.11f
+                            val cap = StrokeCap.Round
+                            drawLine(Color.White, Offset(0f, h * 0.20f), Offset(w,        h * 0.20f), sw, cap)
+                            drawLine(Color.White, Offset(0f, h * 0.52f), Offset(w * 0.78f, h * 0.52f), sw, cap)
+                            drawLine(Color.White, Offset(0f, h * 0.84f), Offset(w * 0.56f, h * 0.84f), sw, cap)
+                        }
                     }
                 },
             )
 
             // Artwork: weight(1f) fills space between TopAppBar and controls.
             // BoxWithConstraints lets us compute the square side from available space.
+            // Swipe up on the artwork to open the Queue.
+            var artworkDragY by remember { mutableFloatStateOf(0f) }
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .pointerInput(onNavigateToQueue) {
+                        detectDragGestures(
+                            onDragStart = { artworkDragY = 0f },
+                            onDragCancel = { artworkDragY = 0f },
+                            onDragEnd = {
+                                if (artworkDragY < -with(density) { 72.dp.toPx() }) {
+                                    onNavigateToQueue()
+                                }
+                                artworkDragY = 0f
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                artworkDragY += amount.y
+                            },
+                        )
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 val sideLength = minOf(maxWidth, maxHeight)

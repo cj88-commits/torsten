@@ -111,10 +111,45 @@ fun QueueScreen(
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
 
-            // ── Page title ────────────────────────────────────────────────────
+            // ── Drag handle + title ───────────────────────────────────────────
             item {
+                // Drag-handle pill — visual cue that Queue can be swiped away
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(4.dp)
+                            .background(Color.White.copy(alpha = 0.18f), RoundedCornerShape(2.dp)),
+                    )
+                }
+
+                // Title row — swiping down here dismisses Queue back to Now Playing
+                var headerDragY by remember { mutableFloatStateOf(0f) }
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(end = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 16.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { headerDragY = 0f },
+                                onDragCancel = { headerDragY = 0f },
+                                onDragEnd = {
+                                    if (headerDragY > with(density) { 64.dp.toPx() }) {
+                                        navController.popBackStack()
+                                    }
+                                    headerDragY = 0f
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    headerDragY += amount.y
+                                },
+                            )
+                        },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (showBackArrow) {

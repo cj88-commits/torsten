@@ -490,7 +490,6 @@ fun AlbumDetailScreen(
                     isCurrentlyPlaying = isThisAlbumActive && playbackState.currentIndex == index,
                     onClick = { playAlbum(songs, album, index, preservePriorityQueue = true) },
                     onLongPress = { contextSong = song },
-                    onStarClick = { viewModel.toggleSongStar(song) },
                     onMenuClick = { contextSong = song },
                 )
             }
@@ -601,7 +600,6 @@ private fun TrackRow(
     isCurrentlyPlaying: Boolean,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
-    onStarClick: () -> Unit,
     onMenuClick: () -> Unit,
 ) {
     Row(
@@ -658,16 +656,5 @@ private fun TrackRow(
             )
         }
 
-        IconButton(
-            onClick = onStarClick,
-            modifier = Modifier.size(36.dp),
-        ) {
-            Icon(
-                imageVector = if (song.starred) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                contentDescription = if (song.starred) "Remove from favourites" else "Add to favourites",
-                tint = if (song.starred) Color(0xFFFFC107) else Color.White.copy(alpha = 0.4f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
     }
 }

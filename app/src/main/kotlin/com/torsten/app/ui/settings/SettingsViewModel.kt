@@ -15,6 +15,8 @@ import com.torsten.app.data.datastore.ServerConfigStore
 import com.torsten.app.data.datastore.StreamingConfig
 import com.torsten.app.data.datastore.StreamingConfigStore
 import com.torsten.app.data.download.DownloadRepository
+import com.torsten.app.data.repository.SyncRepository
+import com.torsten.app.data.repository.SyncState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -103,6 +105,8 @@ data class SettingsUiState(
     val imageCacheSizeLimit: ImageCacheSizeLimit = ImageCacheSizeLimit.MB_1024,
     val currentCacheSizeMb: Long = 0L,
     val showClearCacheDialog: Boolean = false,
+    // Library sync
+    val isSyncing: Boolean = false,
 ) {
     sealed interface TestResult {
         data class Success(val serverName: String) : TestResult
@@ -130,6 +134,7 @@ class SettingsViewModel(
     private val downloadConfigStore: DownloadConfigStore,
     private val downloadRepository: DownloadRepository,
     private val imageCacheConfigStore: ImageCacheConfigStore,
+    private val syncRepository: SyncRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -141,6 +146,9 @@ class SettingsViewModel(
 
     private val _snackbarEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
+
+    // Tracks whether the most recent sync was triggered from the Settings screen
+    private var syncRequestedFromSettings = false
 
     init {
         viewModelScope.launch {
@@ -206,6 +214,26 @@ class SettingsViewModel(
             launch(Dispatchers.IO) {
                 val sizeMb = (SingletonImageLoader.get(appContext).diskCache?.size ?: 0L) / (1024L * 1024L)
                 _uiState.update { it.copy(currentCacheSizeMb = sizeMb) }
+            }
+            // Observe sync state to drive button loading indicator and show snackbar on completion
+            launch {
+                var prevState: SyncState? = null
+                syncRepository.syncState.collect { state ->
+                    _uiState.update { it.copy(isSyncing = state == SyncState.SYNCING) }
+                    if (syncRequestedFromSettings && prevState == SyncState.SYNCING && state == SyncState.IDLE) {
+                        syncRequestedFromSettings = false
+                        _snackbarEvent.tryEmit("Library synced")
+                    }
+                    prevState = state
+                }
+            }
+            launch {
+                syncRepository.syncError.collect { _ ->
+                    if (syncRequestedFromSettings) {
+                        syncRequestedFromSettings = false
+                        _snackbarEvent.tryEmit("Sync failed — check connection")
+                    }
+                }
             }
         }
     }
@@ -384,6 +412,23 @@ class SettingsViewModel(
         _uiState.update { it.copy(showClearCacheDialog = false) }
     }
 
+    // ─── Library sync ────────────────────────────────────────────────────────
+
+    fun syncLibrary() {
+        if (_uiState.value.isSyncing) return
+        val app = appContext as TorstenApp
+        if (!app.connectivityMonitor.isOnline.value) {
+            _snackbarEvent.tryEmit("Sync failed — check connection")
+            return
+        }
+        syncRequestedFromSettings = true
+        syncRepository.triggerSync(force = true)
+    }
+
+    fun showConnectSnackbar() {
+        _snackbarEvent.tryEmit("Connect to your server to get started")
+    }
+
     fun clearImageCache() {
         _uiState.update { it.copy(showClearCacheDialog = false) }
         viewModelScope.launch(Dispatchers.IO) {
@@ -407,6 +452,7 @@ class SettingsViewModelFactory(private val context: Context) : ViewModelProvider
             downloadConfigStore = app.downloadConfigStore,
             downloadRepository = app.downloadRepository,
             imageCacheConfigStore = app.imageCacheConfigStore,
+            syncRepository = app.syncRepository,
         ) as T
     }
 }

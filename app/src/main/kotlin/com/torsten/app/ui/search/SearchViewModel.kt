@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
+import com.torsten.app.data.recommendation.ArtistTopTracksRepository
 import com.torsten.app.data.api.dto.AlbumDto
 import com.torsten.app.data.api.dto.ArtistDto
 import com.torsten.app.data.api.dto.GenreDto
@@ -40,6 +41,7 @@ data class SearchUiState(
 class SearchViewModel(
     private val configStore: ServerConfigStore,
     private val recentSearchesStore: RecentSearchesStore,
+    private val artistTopTracksRepository: ArtistTopTracksRepository,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -138,6 +140,12 @@ class SearchViewModel(
             )
             // Persist the query as a recent search
             recentSearchesStore.add(query)
+            // Prefetch top tracks when results narrow to a single artist
+            if (r.artists.size == 1) {
+                val artist = r.artists.first()
+                Timber.tag("[ArtistTop]").d("prefetch trigger=search artistId='%s' artistName='%s'", artist.id, artist.name)
+                artistTopTracksRepository.prefetchIfNeeded(artist.id, artist.name)
+            }
             Timber.tag("[Search]").d(
                 "search3('%s') → %d tracks, %d albums, %d artists",
                 query, r.tracks.size, r.albums.size, r.artists.size,
@@ -159,6 +167,7 @@ class SearchViewModelFactory(private val context: Context) : ViewModelProvider.F
         return SearchViewModel(
             configStore = ServerConfigStore(app),
             recentSearchesStore = RecentSearchesStore(app),
+            artistTopTracksRepository = app.artistTopTracksRepository,
         ) as T
     }
 }

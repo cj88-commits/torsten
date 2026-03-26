@@ -197,9 +197,28 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             val controller = mediaController ?: return
             val songId = mediaItem?.mediaId.orEmpty()
             val isPriority = mediaItem?.mediaMetadata?.extras?.getString("queueType") == "priority"
+            val newMedia3Idx = controller.currentMediaItemIndex
+            val pqSizeBeforeAdvance = queueManager.priorityQueue.value.size
+            val bgIdxBeforeAdvance = queueManager.backgroundCurrentIndex.value
+            Timber.tag("[Queue]").d(
+                "onMediaItemTransition: newMedia3Idx=%d reason=%d isPriority=%s pqSize=%d bgCurrentIdx=%d title=%s",
+                newMedia3Idx, reason, isPriority, pqSizeBeforeAdvance, bgIdxBeforeAdvance,
+                mediaItem?.mediaMetadata?.extras?.getString("songTitle"),
+            )
             if (songId.isNotEmpty()) {
                 queueManager.onAdvancedToItem(songId, isPriority)
             }
+            Timber.tag("[Queue]").d(
+                "onMediaItemTransition after advance: bgCurrentIdx=%d pqSize=%d",
+                queueManager.backgroundCurrentIndex.value,
+                queueManager.priorityQueue.value.size,
+            )
+            val extras = mediaItem?.mediaMetadata?.extras
+            val artistId = extras?.getString("artistId").orEmpty()
+            val artistName = extras?.getString("artistName").orEmpty()
+            Timber.tag("[ArtistTop]").d("prefetch trigger=songPlay artistId='%s' artistName='%s'", artistId, artistName)
+            (context.applicationContext as TorstenApp).artistTopTracksRepository
+                .prefetchIfNeeded(artistId, artistName)
             updateStateFromController(controller)
         }
 
@@ -476,16 +495,19 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             lastUpdated = now,
         )
         val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
-        playAlbum(listOf(stubSong), stubAlbum, 0, config, coverArtUrl)
+        playAlbum(listOf(stubSong), stubAlbum, 0, config, coverArtUrl, preservePriorityQueue = true)
     }
 
     // ─── Instant Mix ──────────────────────────────────────────────────────────
 
     fun startInstantMix(seedSong: SongDto, config: ServerConfig) {
         if (_isMixLoading.value) return
-        _snackbarEvent.tryEmit("Building mix…")
+        _isMixLoading.value = true
+
+        // Play seed immediately so the user hears music right away
+        playSong(seedSong, config)
+
         viewModelScope.launch {
-            _isMixLoading.value = true
             try {
                 val mix = withContext(Dispatchers.IO) {
                     val seedEntity = db.songDao().getById(seedSong.id)
@@ -509,8 +531,10 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                         .instantMixRepositoryV2.getMix(seedEntity, artistName)
                     entities.map { entityToDto(it) }
                 }
-                playMix(mix, config)
-                _snackbarEvent.tryEmit("Instant mix started")
+                if (mix.isNotEmpty()) {
+                    applyInstantMixResult(mix, config)
+                    _snackbarEvent.tryEmit("Instant mix ready")
+                }
             } catch (e: Exception) {
                 Timber.tag("[InstantMix]").e(e, "Failed to build instant mix for %s", seedSong.id)
                 _snackbarEvent.tryEmit("Couldn't build mix")
@@ -518,6 +542,103 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 _isMixLoading.value = false
             }
         }
+    }
+
+    /**
+     * Appends the resolved instant mix tracks to the Media3 queue **without**
+     * calling [setMediaItems], so the currently playing seed is never rebuffered.
+     *
+     * Media3 layout after [playSong] (seed playing):
+     *   [seed(0), pq0(1) … pq(n)]
+     *
+     * After [applyInstantMixResult]:
+     *   [seed(0), pq0(1) … pq(n), mix1(n+1) … mix19(n+19)]
+     *
+     * The seed at index 0 is untouched — no seek, no rebuffer, no audible glitch.
+     */
+    private fun applyInstantMixResult(mix: List<SongDto>, config: ServerConfig) {
+        val controller = mediaController ?: return
+        val isOnline = connectivityMonitor.isOnline.value
+        val isOnWifi = connectivityMonitor.isOnWifi.value
+        val now = System.currentTimeMillis()
+
+        // Build MediaItems for tracks 1..N — seed (index 0) is already in Media3.
+        val mixMediaItems = mix.drop(1).map { song ->
+            val albumId = song.albumId.orEmpty().ifEmpty { "mix_${song.id}" }
+            val stubAlbum = AlbumEntity(
+                id = albumId,
+                title = song.album.orEmpty(),
+                artistId = song.artistId.orEmpty(),
+                artistName = song.artist.orEmpty(),
+                year = song.year,
+                genre = null,
+                songCount = 1,
+                duration = song.duration ?: 0,
+                coverArtId = song.coverArt,
+                starred = false,
+                downloadState = DownloadState.NONE,
+                downloadProgress = 0,
+                downloadedAt = null,
+                lastUpdated = now,
+            )
+            val stubSong = SongEntity(
+                id = song.id,
+                albumId = albumId,
+                artistId = song.artistId.orEmpty(),
+                title = song.title,
+                trackNumber = song.track ?: 1,
+                discNumber = song.discNumber ?: 1,
+                duration = song.duration ?: 0,
+                bitRate = song.bitRate,
+                suffix = song.suffix,
+                contentType = song.contentType,
+                starred = song.starred != null,
+                localFilePath = null,
+                lastUpdated = now,
+            )
+            val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
+            PlaybackService.MediaItemBuilder.buildMediaItems(
+                songs = listOf(stubSong),
+                album = stubAlbum,
+                config = config,
+                coverArtUrl = coverArtUrl,
+                isOnWifi = isOnWifi,
+                isOnline = isOnline,
+                artworkBitmap = null,
+            ).first()
+        }
+
+        val currentIdx = controller.currentMediaItemIndex
+        val pqSize = queueManager.priorityQueue.value.size
+        // Insert point: right after current + any priority items already queued
+        val insertAt = currentIdx + 1 + pqSize
+
+        // Evict any stale natural-queue items that exist beyond the pq zone
+        if (insertAt < controller.mediaItemCount) {
+            controller.removeMediaItems(insertAt, controller.mediaItemCount)
+        }
+        // Append mix tracks — never touches index currentIdx (seed keeps playing)
+        if (mixMediaItems.isNotEmpty()) {
+            controller.addMediaItems(insertAt, mixMediaItems)
+        }
+
+        // Sync old QueueManager: full 20-track sequence, seed stays at currentBgIdx
+        val bgTracks = mix.map { song ->
+            QueueTrack(
+                songId = song.id,
+                title = song.title,
+                artistName = song.artist.orEmpty(),
+                albumTitle = song.album.orEmpty(),
+                coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) },
+                durationMs = (song.duration ?: 0).toLong() * 1000L,
+            )
+        }
+        queueManager.setBackgroundSequenceOnly(bgTracks, queueManager.backgroundCurrentIndex.value)
+
+        Timber.tag("[InstantMix]").d(
+            "applyInstantMixResult: appended %d tracks at insertAt=%d (currentIdx=%d pqSize=%d) — no rebuffer",
+            mixMediaItems.size, insertAt, currentIdx, pqSize,
+        )
     }
 
     private suspend fun entityToDto(entity: SongEntity): SongDto {
@@ -569,12 +690,23 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
         config: ServerConfig,
         shuffle: Boolean = false,
         startIndex: Int = 0,
+        preservePriorityQueue: Boolean = false,
     ) {
         val ordered = if (shuffle) songs.shuffled() else songs
-        playMix(ordered, config, if (shuffle) 0 else startIndex.coerceIn(0, (ordered.size - 1).coerceAtLeast(0)))
+        playMix(
+            ordered, config,
+            startIndex = if (shuffle) 0 else startIndex.coerceIn(0, (ordered.size - 1).coerceAtLeast(0)),
+            preservePriorityQueue = preservePriorityQueue,
+        )
     }
 
-    private fun playMix(songs: List<SongDto>, config: ServerConfig, startIndex: Int = 0) {
+    private fun playMix(
+        songs: List<SongDto>,
+        config: ServerConfig,
+        startIndex: Int = 0,
+        positionMs: Long = 0L,
+        preservePriorityQueue: Boolean = false,
+    ) {
         val controller = mediaController ?: run {
             Timber.tag("[Player]").w("playMix called before MediaController connected")
             return
@@ -640,11 +772,31 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             )
         }
 
-        controller.setMediaItems(allMediaItems, startIndex, 0L)
+        // Splice priority items immediately after the starting track when preserving the queue.
+        val priorityTracks = if (preservePriorityQueue) queueManager.priorityQueue.value else emptyList()
+        val priorityMediaItems = priorityTracks.map { track ->
+            PlaybackService.MediaItemBuilder.buildPriorityMediaItem(track, config)
+        }
+        val finalMediaItems = if (priorityMediaItems.isEmpty()) {
+            allMediaItems
+        } else {
+            allMediaItems.subList(0, startIndex + 1) +
+                priorityMediaItems +
+                allMediaItems.subList(startIndex + 1, allMediaItems.size)
+        }
+
+        controller.setMediaItems(finalMediaItems, startIndex, positionMs)
         controller.playWhenReady = true
         controller.prepare()
-        queueManager.setBackgroundSequence(bgTracks, startIndex)
-        Timber.tag("[Player]").d("playMix: %d tracks, startIndex=%d, seed=%s", songs.size, startIndex, songs.firstOrNull()?.id)
+        if (preservePriorityQueue) {
+            queueManager.setBackgroundSequenceOnly(bgTracks, startIndex)
+        } else {
+            queueManager.setBackgroundSequence(bgTracks, startIndex)
+        }
+        Timber.tag("[Player]").d(
+            "playMix: %d tracks, startIndex=%d, preservePriority=%b, pqSize=%d, seed=%s",
+            songs.size, startIndex, preservePriorityQueue, priorityTracks.size, songs.firstOrNull()?.id,
+        )
     }
 
     // ─── Queue management ─────────────────────────────────────────────────────
@@ -784,17 +936,96 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
     }
 
     /**
-     * Seeks to the background sequence track at [bgIndex].
-     * Accounts for priority items that sit between the current position and future bg tracks.
+     * Seeks to the background sequence track at [bgIndex] (an index into
+     * [QueueManager.backgroundSequence]).
+     *
+     * Root cause of the previous drift bug
+     * ─────────────────────────────────────
+     * The background sequence maps 1-to-1 to Media3 indices ONLY when no
+     * priority items exist.  Once priority items are inserted (or one is
+     * currently playing), background items AFTER the current bg track are
+     * displaced rightward in the Media3 timeline:
+     *
+     *   Media3 layout:
+     *     [bg0 … bg(bgCurrentIdx)  |  pq0 … pq(pqSize-1)  |  bg(bgCurrentIdx+1) … ]
+     *                                  ^ currentMedia3Idx if a pq item is playing
+     *
+     * Two sources of displacement:
+     *   delta  = (currentMedia3Idx - bgCurrentIdx).coerceAtLeast(0)
+     *            — non-zero only when a pq item is the current track in Media3
+     *   pqSize = remaining pq items queued after the current media position
+     *
+     * Correct formula (forward seek):
+     *   absoluteIndex = bgIndex + delta + pqSize
+     *
+     * After snapshot-removing the pqSize items the target shifts down:
+     *   seekIndex = absoluteIndex - pqSize = bgIndex + delta
+     *
+     * Backward seeks target items before the pq zone; their Media3 index is
+     * always equal to their bgIndex, so no adjustment is needed.
      */
     fun seekToBackgroundTrack(bgIndex: Int) {
         val controller = mediaController ?: return
-        val currentBgIdx = queueManager.backgroundCurrentIndex.value
         val pqSize = queueManager.priorityQueue.value.size
-        val media3Index = if (bgIndex <= currentBgIdx) bgIndex else bgIndex + pqSize
-        if (media3Index < controller.mediaItemCount) {
-            controller.seekTo(media3Index, 0L)
+        val bgCurrentIdx = queueManager.backgroundCurrentIndex.value
+        val currentMedia3Idx = controller.currentMediaItemIndex
+
+        val isForwardSeek = bgIndex > bgCurrentIdx
+        val delta = if (isForwardSeek) (currentMedia3Idx - bgCurrentIdx).coerceAtLeast(0) else 0
+        val absoluteIndex = if (isForwardSeek) bgIndex + delta + pqSize else bgIndex
+        val seekIndex = if (isForwardSeek) bgIndex + delta else bgIndex  // = absoluteIndex - pqSize
+
+        val tappedTitle = queueManager.backgroundSequence.value.getOrNull(bgIndex)?.title
+        Timber.tag("[Queue]").d(
+            "seekToBackgroundTrack: bgIndex=%d isForward=%b delta=%d pqSize=%d → absoluteIndex=%d seekIndex=%d",
+            bgIndex, isForwardSeek, delta, pqSize, absoluteIndex, seekIndex,
+        )
+        Timber.tag("[Queue]").d("seekToBackgroundTrack: tappedTitle='%s'", tappedTitle)
+        if (absoluteIndex < controller.mediaItemCount) {
+            val titleAtAbsolute = controller.getMediaItemAt(absoluteIndex)
+                .mediaMetadata.extras?.getString("songTitle")
+            Timber.tag("[Queue]").d(
+                "seekToBackgroundTrack: Media3[absoluteIndex=%d] title='%s' match=%b",
+                absoluteIndex, titleAtAbsolute, titleAtAbsolute == tappedTitle,
+            )
         }
+
+        if (pqSize == 0) {
+            if (absoluteIndex < controller.mediaItemCount) {
+                controller.seekTo(absoluteIndex, 0L)
+            }
+            return
+        }
+
+        // Snapshot pq MediaItems from their current slots (currentMedia3Idx+1 … +pqSize).
+        val priorityItems = (0 until pqSize).mapNotNull { i ->
+            val idx = currentMedia3Idx + 1 + i
+            if (idx < controller.mediaItemCount) controller.getMediaItemAt(idx) else null
+        }
+
+        // Remove in reverse so earlier indices stay valid during the loop.
+        for (i in pqSize - 1 downTo 0) {
+            val idx = currentMedia3Idx + 1 + i
+            if (idx < controller.mediaItemCount) controller.removeMediaItem(idx)
+        }
+
+        if (seekIndex < controller.mediaItemCount) {
+            val titleAfterRemoval = controller.getMediaItemAt(seekIndex)
+                .mediaMetadata.extras?.getString("songTitle")
+            Timber.tag("[Queue]").d(
+                "seekToBackgroundTrack: after pq removal, seekIndex=%d title='%s' match=%b",
+                seekIndex, titleAfterRemoval, titleAfterRemoval == tappedTitle,
+            )
+            controller.seekTo(seekIndex, 0L)
+            // Re-anchor pq items immediately after the new current position.
+            priorityItems.forEachIndexed { i, mediaItem ->
+                controller.addMediaItem(seekIndex + 1 + i, mediaItem)
+            }
+        }
+        Timber.tag("[Player]").d(
+            "seekToBackgroundTrack: bgIndex=%d absoluteIndex=%d seekIndex=%d pqRelocated=%d",
+            bgIndex, absoluteIndex, seekIndex, priorityItems.size,
+        )
     }
 
     // ─── Stars ────────────────────────────────────────────────────────────────

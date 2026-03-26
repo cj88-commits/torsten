@@ -12,10 +12,14 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -143,8 +147,43 @@ fun SettingsScreen(
                 .imePadding(),
         ) {
             // ═══════════════════════════════════════════════════
+            // LIBRARY
+            // ═══════════════════════════════════════════════════
+            SectionHeader("LIBRARY")
+
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = viewModel::syncLibrary,
+                    enabled = !state.isSyncing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (state.isSyncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Syncing…")
+                    } else {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Sync library")
+                    }
+                }
+            }
+
+            // ═══════════════════════════════════════════════════
             // SERVER
             // ═══════════════════════════════════════════════════
+            SectionDivider()
             SectionHeader("SERVER")
 
             Row(

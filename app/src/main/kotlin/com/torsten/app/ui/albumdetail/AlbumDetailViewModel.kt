@@ -17,6 +17,7 @@ import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.download.DownloadRepository
 import com.torsten.app.data.download.StorageUtils
 import com.torsten.app.data.network.ConnectivityMonitor
+import com.torsten.app.data.recommendation.ArtistTopTracksRepository
 import com.torsten.app.data.repository.SyncRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +44,7 @@ class AlbumDetailViewModel(
     private val downloadRepository: DownloadRepository,
     private val connectivityMonitor: ConnectivityMonitor,
     private val appContext: Context,
+    private val artistTopTracksRepository: ArtistTopTracksRepository,
 ) : ViewModel() {
 
     // Raw Room flow — always up-to-date, used for download-related derived flows.
@@ -121,6 +123,12 @@ class AlbumDetailViewModel(
             } catch (e: Exception) {
                 Timber.tag("[API]").e(e, "Failed to initialise SubsonicApiClient in AlbumDetailViewModel")
             }
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val a = album.first { it != null } ?: return@launch
+            Timber.tag("[ArtistTop]").d("prefetch trigger=albumOpen artistId='%s' artistName='%s'", a.artistId, a.artistName)
+            artistTopTracksRepository.prefetchIfNeeded(a.artistId, a.artistName)
         }
     }
 
@@ -296,6 +304,7 @@ class AlbumDetailViewModelFactory(
             downloadRepository = app.downloadRepository,
             connectivityMonitor = app.connectivityMonitor,
             appContext = app,
+            artistTopTracksRepository = app.artistTopTracksRepository,
         ) as T
     }
 }

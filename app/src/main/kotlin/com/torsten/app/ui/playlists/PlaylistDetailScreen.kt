@@ -448,7 +448,7 @@ fun PlaylistDetailScreen(
                             onClick = {
                                 scope.launch {
                                     val config = viewModel.getServerConfig().first()
-                                    playbackViewModel.playFromSongDtos(tracks, config, startIndex = index)
+                                    playbackViewModel.playFromSongDtos(tracks, config, startIndex = index, preservePriorityQueue = true)
                                 }
                             },
                         )
