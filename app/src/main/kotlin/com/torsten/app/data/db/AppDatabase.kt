@@ -11,6 +11,7 @@ import com.torsten.app.data.db.dao.ArtistMbidCacheDao
 import com.torsten.app.data.db.dao.ArtistTopTracksCacheDao
 import com.torsten.app.data.db.dao.PendingStarDao
 import com.torsten.app.data.db.dao.PlaybackPositionDao
+import com.torsten.app.data.db.dao.PlaylistTrackDao
 import com.torsten.app.data.db.dao.SongDao
 import com.torsten.app.data.db.dao.SyncMetadataDao
 import com.torsten.app.data.db.entity.AlbumEntity
@@ -19,6 +20,7 @@ import com.torsten.app.data.db.entity.ArtistMbidCacheEntity
 import com.torsten.app.data.db.entity.ArtistTopTracksCacheEntity
 import com.torsten.app.data.db.entity.PendingStarEntity
 import com.torsten.app.data.db.entity.PlaybackPositionEntity
+import com.torsten.app.data.db.entity.PlaylistTrackEntity
 import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.db.entity.SyncMetadataEntity
 
@@ -37,8 +39,9 @@ import com.torsten.app.data.db.entity.SyncMetadataEntity
         PendingStarEntity::class,
         ArtistMbidCacheEntity::class,
         ArtistTopTracksCacheEntity::class,
+        PlaylistTrackEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -52,6 +55,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingStarDao(): PendingStarDao
     abstract fun artistMbidCacheDao(): ArtistMbidCacheDao
     abstract fun artistTopTracksCacheDao(): ArtistTopTracksCacheDao
+    abstract fun playlistTrackDao(): PlaylistTrackDao
 
     companion object {
         @Volatile

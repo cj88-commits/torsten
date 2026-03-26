@@ -6,12 +6,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,31 +24,32 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -67,6 +68,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -107,7 +109,6 @@ fun PlaylistDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Track long-press context sheet
     var contextSong by remember { mutableStateOf<SongDto?>(null) }
     var contextSongIndex by remember { mutableIntStateOf(-1) }
     val contextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -165,7 +166,6 @@ fun PlaylistDetailScreen(
         )
     }
 
-    // Context menu bottom sheet
     if (contextSong != null) {
         ModalBottomSheet(
             onDismissRequest = { contextSong = null },
@@ -185,8 +185,6 @@ fun PlaylistDetailScreen(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                 )
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-
-                // Play next
                 TextButton(
                     onClick = {
                         contextSong = null
@@ -202,8 +200,6 @@ fun PlaylistDetailScreen(
                     Spacer(Modifier.width(12.dp))
                     Text("Play next", color = Color.White, modifier = Modifier.weight(1f))
                 }
-
-                // Add to playlist
                 TextButton(
                     onClick = {
                         contextSong = null
@@ -216,8 +212,6 @@ fun PlaylistDetailScreen(
                     Spacer(Modifier.width(12.dp))
                     Text("Add to playlist", color = Color.White, modifier = Modifier.weight(1f))
                 }
-
-                // Start instant mix
                 TextButton(
                     onClick = {
                         val s = contextSong ?: return@TextButton
@@ -231,8 +225,6 @@ fun PlaylistDetailScreen(
                     Spacer(Modifier.width(12.dp))
                     Text("Start instant mix", color = Color.White, modifier = Modifier.weight(1f))
                 }
-
-                // Remove from playlist
                 TextButton(
                     onClick = {
                         contextSong = null
@@ -292,7 +284,7 @@ fun PlaylistDetailScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                 ) {
-                    // Header
+                    // ── Playlist header ───────────────────────────────────────
                     item {
                         Column(
                             modifier = Modifier
@@ -300,7 +292,6 @@ fun PlaylistDetailScreen(
                                 .padding(top = 8.dp, bottom = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            // Centered square art, full width minus 40dp padding, max 280dp
                             BoxWithConstraints(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -324,77 +315,131 @@ fun PlaylistDetailScreen(
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     } else {
-                                        Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(64.dp))
+                                        Icon(
+                                            Icons.Filled.MusicNote,
+                                            null,
+                                            tint = Color.White.copy(alpha = 0.3f),
+                                            modifier = Modifier.size(64.dp),
+                                        )
                                     }
                                 }
                             }
 
                             Spacer(Modifier.height(16.dp))
 
-                            // Metadata column
                             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                                // Playlist name + edit button
+                                // Name + edit
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = playlist.name,
+                                        text = playlist.name.ifEmpty { initialName.ifEmpty { "Playlist" } },
                                         style = MaterialTheme.typography.titleLarge,
                                         color = Color.White,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    IconButton(
-                                        onClick = {
-                                            renameValue = playlist.name
-                                            showRenameDialog = true
-                                        },
-                                        modifier = Modifier.size(32.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Edit,
-                                            contentDescription = "Rename playlist",
-                                            tint = Color.White.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(18.dp),
-                                        )
+                                    // Only offer rename when online (name is authoritative from server)
+                                    if (!state.isShowingCached) {
+                                        IconButton(
+                                            onClick = {
+                                                renameValue = playlist.name
+                                                showRenameDialog = true
+                                            },
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Edit,
+                                                contentDescription = "Rename playlist",
+                                                tint = Color.White.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
                                     }
                                 }
 
                                 Spacer(Modifier.height(4.dp))
 
-                                // Metadata row: tracks · duration
                                 val meta = buildString {
                                     append("${tracks.size} ${if (tracks.size == 1) "track" else "tracks"}")
                                     if (playlist.duration > 0) append(" · ${formatDuration(playlist.duration)}")
                                 }
                                 Text(meta, style = MaterialTheme.typography.bodySmall, color = TorstenColor.TextTertiary)
 
+                                // ── Offline indicator pill ────────────────────
+                                if (state.isShowingCached) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.07f),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.CloudOff,
+                                                contentDescription = null,
+                                                tint = TorstenColor.TextTertiary,
+                                                modifier = Modifier.size(12.dp),
+                                            )
+                                            Text(
+                                                "Offline — showing cached tracks",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TorstenColor.TextTertiary,
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // ── Action buttons ────────────────────────────
                                 if (tracks.isNotEmpty()) {
                                     Spacer(Modifier.height(12.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     ) {
+                                        // Play — skips non-playable tracks when offline
                                         Button(
                                             onClick = {
                                                 scope.launch {
-                                                    val config = viewModel.getServerConfig().first()
-                                                    playbackViewModel.playFromSongDtos(tracks, config)
+                                                    val playable = if (state.isShowingCached) {
+                                                        tracks.filter { it.albumId in state.downloadedAlbumIds }
+                                                    } else tracks
+                                                    if (playable.isEmpty()) {
+                                                        snackbarHostState.showSnackbar("No downloaded tracks in this playlist")
+                                                    } else {
+                                                        val config = viewModel.getServerConfig().first()
+                                                        playbackViewModel.playFromSongDtos(playable, config)
+                                                    }
                                                 }
                                             },
                                             modifier = Modifier.height(40.dp),
                                             shape = RoundedCornerShape(50),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color.White,
+                                                contentColor   = Color.Black,
+                                            ),
                                             contentPadding = PaddingValues(horizontal = 16.dp),
                                         ) {
                                             Icon(Icons.Filled.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
                                             Spacer(Modifier.width(4.dp))
                                             Text("Play", color = Color.Black)
                                         }
+
+                                        // Shuffle — same offline filtering
                                         OutlinedButton(
                                             onClick = {
                                                 scope.launch {
-                                                    val config = viewModel.getServerConfig().first()
-                                                    playbackViewModel.playFromSongDtos(tracks, config, shuffle = true)
+                                                    val playable = if (state.isShowingCached) {
+                                                        tracks.filter { it.albumId in state.downloadedAlbumIds }
+                                                    } else tracks
+                                                    if (playable.isEmpty()) {
+                                                        snackbarHostState.showSnackbar("No downloaded tracks in this playlist")
+                                                    } else {
+                                                        val config = viewModel.getServerConfig().first()
+                                                        playbackViewModel.playFromSongDtos(playable, config, shuffle = true)
+                                                    }
                                                 }
                                             },
                                             modifier = Modifier.height(40.dp),
@@ -407,35 +452,42 @@ fun PlaylistDetailScreen(
                                             Spacer(Modifier.width(4.dp))
                                             Text("Shuffle")
                                         }
-                                        PlaylistDownloadButton(
-                                            downloadState = downloadState,
-                                            onDownload = viewModel::downloadPlaylist,
-                                            onCancel = viewModel::cancelPlaylistDownload,
-                                            onDelete = { showDeleteDownloadDialog = true },
-                                        )
+
+                                        // Download button — hidden when showing cached (offline)
+                                        if (!state.isShowingCached) {
+                                            PlaylistDownloadButton(
+                                                downloadState = downloadState,
+                                                onDownload    = viewModel::downloadPlaylist,
+                                                onCancel      = viewModel::cancelPlaylistDownload,
+                                                onDelete      = { showDeleteDownloadDialog = true },
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Empty state
+                    // ── Empty state ───────────────────────────────────────────
                     if (tracks.isEmpty()) {
                         item {
                             EmptyState(
-                                message = "No tracks yet",
+                                message  = "No tracks yet",
                                 subtitle = "Add tracks from albums or search results",
                                 modifier = Modifier.height(280.dp),
                             )
                         }
                     }
 
-                    // Track list
+                    // ── Track list ────────────────────────────────────────────
                     itemsIndexed(tracks, key = { idx, song -> "${song.id}_$idx" }) { index, song ->
+                        val isPlayable = !state.isShowingCached ||
+                            (song.albumId != null && song.albumId in state.downloadedAlbumIds)
                         SwipeToRemoveTrackRow(
-                            song = song,
-                            index = index + 1,
+                            song        = song,
+                            index       = index + 1,
                             coverArtUrl = song.coverArt?.let { viewModel.getCoverArtUrl(it, 150) },
+                            isPlayable  = isPlayable,
                             onLongPress = {
                                 contextSong = song
                                 contextSongIndex = index
@@ -446,9 +498,20 @@ fun PlaylistDetailScreen(
                             },
                             onSwipeRemove = { viewModel.removeTrack(index) },
                             onClick = {
-                                scope.launch {
-                                    val config = viewModel.getServerConfig().first()
-                                    playbackViewModel.playFromSongDtos(tracks, config, startIndex = index, preservePriorityQueue = true)
+                                if (!isPlayable) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Download the album to play offline")
+                                    }
+                                } else {
+                                    scope.launch {
+                                        val config = viewModel.getServerConfig().first()
+                                        playbackViewModel.playFromSongDtos(
+                                            tracks,
+                                            config,
+                                            startIndex = index,
+                                            preservePriorityQueue = true,
+                                        )
+                                    }
                                 }
                             },
                         )
@@ -461,6 +524,7 @@ fun PlaylistDetailScreen(
     }
 }
 
+// ─── Download button ──────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -470,24 +534,24 @@ private fun PlaylistDownloadButton(
     onCancel: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val isActive = downloadState == DownloadState.DOWNLOADING
+    val isActive   = downloadState == DownloadState.DOWNLOADING
     val isComplete = downloadState == DownloadState.COMPLETE
-    val isPartial = downloadState == DownloadState.PARTIAL
+    val isPartial  = downloadState == DownloadState.PARTIAL
 
-    val borderColor = when {
+    val borderColor  = when {
         isComplete -> null
-        isActive -> Color.White.copy(alpha = 0.2f)
-        else -> Color.White.copy(alpha = 0.3f)
+        isActive   -> Color.White.copy(alpha = 0.2f)
+        else       -> Color.White.copy(alpha = 0.3f)
     }
-    val bgColor = if (isComplete) TorstenColor.Success else Color.Transparent
+    val bgColor      = if (isComplete) TorstenColor.Success else Color.Transparent
     val contentColor = if (isActive) TorstenColor.TextTertiary else Color.White
 
     Surface(
-        shape = RoundedCornerShape(50),
-        border = borderColor?.let { BorderStroke(1.dp, it) },
-        color = bgColor,
-        contentColor = contentColor,
-        modifier = Modifier
+        shape         = RoundedCornerShape(50),
+        border        = borderColor?.let { BorderStroke(1.dp, it) },
+        color         = bgColor,
+        contentColor  = contentColor,
+        modifier      = Modifier
             .height(40.dp)
             .combinedClickable(
                 onClick = {
@@ -497,9 +561,9 @@ private fun PlaylistDownloadButton(
                     }
                 },
                 onLongClick = when {
-                    isActive -> onCancel
+                    isActive   -> onCancel
                     isComplete -> onDelete
-                    else -> null
+                    else       -> null
                 },
             ),
     ) {
@@ -509,31 +573,31 @@ private fun PlaylistDownloadButton(
         ) {
             when (downloadState) {
                 DownloadState.NONE -> {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Download", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.DOWNLOADING -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
+                        modifier    = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
-                        color = TorstenColor.TextTertiary,
+                        color       = TorstenColor.TextTertiary,
                     )
                     Spacer(Modifier.width(4.dp))
                     Text("Downloading…", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.COMPLETE -> {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Downloaded ✓", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.PARTIAL -> {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Resume", style = MaterialTheme.typography.labelLarge)
                 }
                 else -> {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Download", style = MaterialTheme.typography.labelLarge)
                 }
@@ -542,12 +606,15 @@ private fun PlaylistDownloadButton(
     }
 }
 
+// ─── Track row (swipe-to-remove + offline awareness) ─────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun SwipeToRemoveTrackRow(
     song: SongDto,
     index: Int,
     coverArtUrl: String?,
+    isPlayable: Boolean = true,
     onLongPress: () -> Unit,
     onMenuClick: () -> Unit = {},
     onSwipeRemove: () -> Unit,
@@ -563,18 +630,14 @@ private fun SwipeToRemoveTrackRow(
     }
 
     SwipeToDismissBox(
-        state = dismissState,
+        state                  = dismissState,
         enableDismissFromStartToEnd = false,
-        backgroundContent = {
+        backgroundContent      = {
             Box(
                 Modifier.fillMaxSize().background(Color(0xFFB71C1C)),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                Icon(
-                    Icons.Filled.Delete, "Remove",
-                    tint = Color.White,
-                    modifier = Modifier.padding(end = 20.dp),
-                )
+                Icon(Icons.Filled.Delete, "Remove", tint = Color.White, modifier = Modifier.padding(end = 20.dp))
             }
         },
     ) {
@@ -583,13 +646,14 @@ private fun SwipeToRemoveTrackRow(
                 .fillMaxWidth()
                 .background(DarkBackground)
                 .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+                .alpha(if (isPlayable) 1f else 0.5f)
                 .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = index.toString(),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.4f),
+                text     = index.toString(),
+                style    = MaterialTheme.typography.bodySmall,
+                color    = Color.White.copy(alpha = 0.4f),
                 modifier = Modifier.width(28.dp),
             )
 
@@ -601,13 +665,18 @@ private fun SwipeToRemoveTrackRow(
             ) {
                 if (coverArtUrl != null) {
                     AsyncImage(
-                        model = coverArtUrl,
+                        model        = coverArtUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier     = Modifier.fillMaxSize(),
                     )
                 } else {
-                    Icon(Icons.Filled.MusicNote, null, tint = Color.White.copy(alpha = 0.2f), modifier = Modifier.size(20.dp).align(Alignment.Center))
+                    Icon(
+                        Icons.Filled.MusicNote,
+                        null,
+                        tint     = Color.White.copy(alpha = 0.2f),
+                        modifier = Modifier.size(20.dp).align(Alignment.Center),
+                    )
                 }
             }
 
@@ -616,16 +685,16 @@ private fun SwipeToRemoveTrackRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     song.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
+                    style    = MaterialTheme.typography.bodyMedium,
+                    color    = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (!song.artist.isNullOrEmpty()) {
                     Text(
                         song.artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.5f),
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = Color.White.copy(alpha = 0.5f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -635,19 +704,31 @@ private fun SwipeToRemoveTrackRow(
             song.duration?.let { dur ->
                 Text(
                     formatTrackDuration(dur),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.4f),
+                    style    = MaterialTheme.typography.bodySmall,
+                    color    = Color.White.copy(alpha = 0.4f),
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
 
-            IconButton(onClick = onMenuClick, modifier = Modifier.size(36.dp)) {
+            // Non-playable offline tracks show a download hint icon instead of the menu
+            if (!isPlayable) {
                 Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "More options",
-                    tint = Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier.size(18.dp),
+                    Icons.Filled.Download,
+                    contentDescription = "Album not downloaded",
+                    tint               = Color.White.copy(alpha = 0.35f),
+                    modifier           = Modifier
+                        .padding(horizontal = 10.dp)
+                        .size(18.dp),
                 )
+            } else {
+                IconButton(onClick = onMenuClick, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "More options",
+                        tint               = Color.White.copy(alpha = 0.4f),
+                        modifier           = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }

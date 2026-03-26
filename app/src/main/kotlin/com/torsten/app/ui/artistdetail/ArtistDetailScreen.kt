@@ -277,39 +277,6 @@ fun ArtistDetailScreen(
                     }
                     TextButton(
                         onClick = {
-                            contextLbSong = null
-                            scope.launch {
-                                val config = viewModel.getServerConfig().first()
-                                val coverArtUrl = viewModel.getCoverArtUrlForSong(song, 300)
-                                val stubAlbum = AlbumEntity(
-                                    id = song.albumId.ifEmpty { "stub_${song.id}" },
-                                    title = "",
-                                    artistId = song.artistId,
-                                    artistName = artist?.name.orEmpty(),
-                                    year = null,
-                                    genre = null,
-                                    songCount = 1,
-                                    duration = song.duration,
-                                    coverArtId = null,
-                                    starred = false,
-                                    downloadState = DownloadState.NONE,
-                                    downloadProgress = 0,
-                                    downloadedAt = null,
-                                    lastUpdated = System.currentTimeMillis(),
-                                )
-                                playbackViewModel.enqueueNextSong(song, stubAlbum, config, coverArtUrl)
-                                snackbarHostState.showSnackbar("Added to queue")
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Add to queue", color = Color.White, modifier = Modifier.weight(1f))
-                    }
-                    TextButton(
-                        onClick = {
                             val songId = contextLbSong?.id ?: return@TextButton
                             contextLbSong = null
                             onAddToPlaylist(songId)
@@ -384,22 +351,6 @@ fun ArtistDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, tint = Color.White.copy(alpha = 0.7f))
                         Spacer(modifier = Modifier.width(12.dp))
                         Text("Play next", color = Color.White, modifier = Modifier.weight(1f))
-                    }
-                    TextButton(
-                        onClick = {
-                            contextSongDto = null
-                            scope.launch {
-                                val config = viewModel.getServerConfig().first()
-                                playbackViewModel.enqueueNext(song, config)
-                                snackbarHostState.showSnackbar("Added to queue")
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = Color.White.copy(alpha = 0.7f))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Add to queue", color = Color.White, modifier = Modifier.weight(1f))
                     }
                     TextButton(
                         onClick = {

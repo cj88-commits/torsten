@@ -11,6 +11,7 @@ import com.torsten.app.data.datastore.DownloadedPlaylistInfo
 import com.torsten.app.data.datastore.DownloadedPlaylistStore
 import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.data.datastore.ServerConfigStore
+import com.torsten.app.data.db.AppDatabase
 import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.data.repository.PlaylistRepository
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,10 @@ data class PlaylistDetailUiState(
     val playlist: PlaylistWithTracksDto? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
+    /** True when displaying locally cached tracks because the network fetch failed. */
+    val isShowingCached: Boolean = false,
+    /** Album IDs whose downloadState == COMPLETE; used to gate offline playback per track. */
+    val downloadedAlbumIds: Set<String> = emptySet(),
 )
 
 class PlaylistDetailViewModel(
@@ -38,6 +43,7 @@ class PlaylistDetailViewModel(
     private val repository: PlaylistRepository,
     private val configStore: ServerConfigStore,
     private val downloadedPlaylistStore: DownloadedPlaylistStore,
+    private val db: AppDatabase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistDetailUiState())
@@ -58,21 +64,65 @@ class PlaylistDetailViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             serverConfig = configStore.serverConfig.first()
         }
+        // Keep downloadedAlbumIds live so the UI reacts as albums are downloaded
+        viewModelScope.launch {
+            db.albumDao().observeAll().collect { albums ->
+                val ids = albums
+                    .filter { it.downloadState == DownloadState.COMPLETE }
+                    .map { it.id }
+                    .toSet()
+                _state.value = _state.value.copy(downloadedAlbumIds = ids)
+            }
+        }
         loadPlaylist()
     }
 
     fun loadPlaylist() {
         viewModelScope.launch(Dispatchers.IO) {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.value = _state.value.copy(error = null)
+
+            // ── Step 1: serve from cache immediately (no spinner if cache exists) ──
+            val cached = repository.getCachedPlaylistTracks(playlistId)
+            if (cached.isNotEmpty()) {
+                val stub = PlaylistWithTracksDto(
+                    id        = playlistId,
+                    name      = "",        // UI falls back to the initialName parameter
+                    entry     = cached,
+                    duration  = cached.sumOf { it.duration ?: 0 },
+                    songCount = cached.size,
+                )
+                _state.value = _state.value.copy(
+                    playlist        = stub,
+                    isLoading       = false,
+                    isShowingCached = true,
+                )
+                setupDownloadObservation(cached.map { it.id })
+            } else {
+                _state.value = _state.value.copy(isLoading = true)
+            }
+
+            // ── Step 2: refresh from network ──────────────────────────────────
             runCatching { repository.getPlaylist(playlistId) }
                 .onSuccess { playlist ->
-                    _state.value = PlaylistDetailUiState(playlist = playlist, isLoading = false)
+                    _state.value = _state.value.copy(
+                        playlist        = playlist,
+                        isLoading       = false,
+                        isShowingCached = false,
+                        error           = null,
+                    )
                     val trackIds = playlist.entry.orEmpty().map { it.id }
                     setupDownloadObservation(trackIds)
+                    repository.cachePlaylistTracks(playlistId, playlist.entry.orEmpty())
                 }
                 .onFailure { e ->
                     Timber.tag("[Playlists]").e(e, "getPlaylist failed")
-                    _state.value = PlaylistDetailUiState(isLoading = false, error = e.message ?: "Failed to load playlist")
+                    if (cached.isEmpty()) {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error     = "Playlist unavailable offline",
+                        )
+                    }
+                    // If cached tracks are already showing, leave them — isShowingCached stays true
                 }
         }
     }
@@ -107,12 +157,12 @@ class PlaylistDetailViewModel(
                 .onSuccess {
                     downloadedPlaylistStore.save(
                         DownloadedPlaylistInfo(
-                            playlistId = playlistId,
-                            name = playlist.name,
-                            songCount = tracks.size,
-                            coverArtId = playlist.coverArt,
+                            playlistId   = playlistId,
+                            name         = playlist.name,
+                            songCount    = tracks.size,
+                            coverArtId   = playlist.coverArt,
                             downloadedAt = System.currentTimeMillis(),
-                            songIds = tracks.map { it.id },
+                            songIds      = tracks.map { it.id },
                         ),
                     )
                 }
@@ -145,7 +195,8 @@ class PlaylistDetailViewModel(
     fun renamePlaylist(name: String) {
         val trimmed = name.trim().ifEmpty { return }
         val current = _state.value.playlist ?: return
-        _state.value = _state.value.copy(playlist = current.copy(name = trimmed))
+        val newPlaylist = current.copy(name = trimmed)
+        _state.value = _state.value.copy(playlist = newPlaylist)
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { repository.renamePlaylist(playlistId, trimmed) }
                 .onFailure { e ->
@@ -162,10 +213,9 @@ class PlaylistDetailViewModel(
         if (songIndex !in tracks.indices) return
         val removedTitle = tracks[songIndex].title
         tracks.removeAt(songIndex)
-        // Optimistic update
         _state.value = _state.value.copy(
             playlist = current.copy(
-                entry = tracks,
+                entry     = tracks,
                 songCount = tracks.size,
             ),
         )
@@ -174,7 +224,6 @@ class PlaylistDetailViewModel(
                 .onSuccess { _snackbar.tryEmit("\"$removedTitle\" removed from playlist") }
                 .onFailure { e ->
                     Timber.tag("[Playlists]").e(e, "removeTrack failed")
-                    // Revert
                     loadPlaylist()
                     _snackbar.tryEmit("Failed to remove track")
                 }
@@ -198,9 +247,15 @@ class PlaylistDetailViewModelFactory(
         val app = context.applicationContext as TorstenApp
         return PlaylistDetailViewModel(
             playlistId = playlistId,
-            repository = PlaylistRepository(ServerConfigStore(app), app.downloadRepository),
-            configStore = ServerConfigStore(app),
+            repository = PlaylistRepository(
+                configStore        = ServerConfigStore(app),
+                downloadRepository = app.downloadRepository,
+                playlistTrackDao   = app.database.playlistTrackDao(),
+                albumDao           = app.database.albumDao(),
+            ),
+            configStore             = ServerConfigStore(app),
             downloadedPlaylistStore = app.downloadedPlaylistStore,
+            db                      = app.database,
         ) as T
     }
 }

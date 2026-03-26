@@ -5,7 +5,10 @@ import com.torsten.app.data.api.dto.PlaylistDto
 import com.torsten.app.data.api.dto.PlaylistWithTracksDto
 import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.datastore.ServerConfigStore
+import com.torsten.app.data.db.dao.AlbumDao
+import com.torsten.app.data.db.dao.PlaylistTrackDao
 import com.torsten.app.data.db.entity.DownloadState
+import com.torsten.app.data.db.entity.PlaylistTrackEntity
 import com.torsten.app.data.download.DownloadRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -16,6 +19,8 @@ import timber.log.Timber
 class PlaylistRepository(
     private val configStore: ServerConfigStore,
     private val downloadRepository: DownloadRepository? = null,
+    private val playlistTrackDao: PlaylistTrackDao? = null,
+    private val albumDao: AlbumDao? = null,
 ) {
 
     private suspend fun client(): SubsonicApiClient {
@@ -101,5 +106,60 @@ class PlaylistRepository(
     /** Deletes all local track files for the given song IDs. */
     suspend fun deletePlaylistDownload(songIds: List<String>) {
         downloadRepository?.deleteTrackDownloads(songIds)
+    }
+
+    // ─── Playlist track cache ─────────────────────────────────────────────────
+
+    /**
+     * Returns cached playlist tracks from Room, enriched with artist name and cover art
+     * by joining against the albums table. Returns an empty list if nothing is cached.
+     */
+    suspend fun getCachedPlaylistTracks(playlistId: String): List<SongDto> {
+        val dao = playlistTrackDao ?: return emptyList()
+        val songs = dao.getTracksForPlaylist(playlistId)
+        if (songs.isEmpty()) return emptyList()
+
+        // Enrich with album data (artistName, coverArtId) from the local albums table
+        val albumsById = albumDao
+            ?.let { aDao ->
+                songs.map { it.albumId }.distinct()
+                    .mapNotNull { aDao.getById(it) }
+                    .associateBy { it.id }
+            }
+            ?: emptyMap()
+
+        return songs.map { song ->
+            val album = albumsById[song.albumId]
+            SongDto(
+                id          = song.id,
+                title       = song.title,
+                albumId     = song.albumId,
+                artistId    = song.artistId,
+                duration    = song.duration,
+                bitRate     = song.bitRate,
+                suffix      = song.suffix,
+                contentType = song.contentType,
+                artist      = album?.artistName,
+                coverArt    = album?.coverArtId,
+            )
+        }
+    }
+
+    /**
+     * Persists the playlist → song mapping so it can be served offline.
+     * Replaces any existing cache for this playlist.
+     */
+    suspend fun cachePlaylistTracks(playlistId: String, songs: List<SongDto>) {
+        val dao = playlistTrackDao ?: return
+        val entities = songs.mapIndexed { index, song ->
+            PlaylistTrackEntity(
+                playlistId = playlistId,
+                songId     = song.id,
+                trackOrder = index,
+            )
+        }
+        dao.deleteTracksForPlaylist(playlistId)
+        dao.upsertTracks(entities)
+        Timber.tag("[Playlists]").d("Cached %d tracks for playlist %s", entities.size, playlistId)
     }
 }

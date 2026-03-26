@@ -487,7 +487,7 @@ fun AlbumDetailScreen(
             itemsIndexed(songs) { index, song ->
                 TrackRow(
                     song = song,
-                    isCurrentlyPlaying = isThisAlbumActive && playbackState.currentIndex == index,
+                    isCurrentlyPlaying = playbackState.currentSongId == song.id,
                     onClick = { playAlbum(songs, album, index, preservePriorityQueue = true) },
                     onLongPress = { contextSong = song },
                     onMenuClick = { contextSong = song },

@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
+enum class SearchFilter { All, Tracks, Artists, Albums }
+
 data class SearchUiState(
     val isLoading: Boolean = false,
     val tracks: List<SongDto> = emptyList(),
@@ -35,6 +37,7 @@ data class SearchUiState(
     val error: String? = null,
     /** True once at least one search has completed (distinguishes empty results from idle). */
     val hasSearched: Boolean = false,
+    val activeFilter: SearchFilter = SearchFilter.All,
 )
 
 @OptIn(FlowPreview::class)
@@ -88,6 +91,10 @@ class SearchViewModel(
         _results.value = SearchUiState()
     }
 
+    fun setFilter(filter: SearchFilter) {
+        _results.value = _results.value.copy(activeFilter = filter)
+    }
+
     fun removeRecentSearch(query: String) {
         viewModelScope.launch { recentSearchesStore.remove(query) }
     }
@@ -130,13 +137,14 @@ class SearchViewModel(
         }
         runCatching {
             val client = SubsonicApiClient(config).also { apiClient = it }
-            val r = client.search(query, songCount = 3, albumCount = 3, artistCount = 3)
+            val r = client.search(query, songCount = 25, albumCount = 10, artistCount = 10)
             _results.value = SearchUiState(
                 isLoading = false,
                 tracks = r.tracks,
                 albums = r.albums,
                 artists = r.artists,
                 hasSearched = true,
+                activeFilter = SearchFilter.All,
             )
             // Persist the query as a recent search
             recentSearchesStore.add(query)
