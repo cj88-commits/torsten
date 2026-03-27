@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.torsten.app.ui.theme.TorstenColor
 import coil3.compose.AsyncImage
 import com.torsten.app.ui.playback.PlaybackUiState
@@ -71,7 +72,7 @@ fun MiniPlayer(
                 modifier = Modifier
                     .background(TorstenColor.ElevatedSurface)
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Artwork thumbnail
@@ -81,11 +82,11 @@ fun MiniPlayer(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(6.dp)),
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 // Song info with right-edge fade for long titles
                 Box(modifier = Modifier.weight(1f)) {
@@ -94,7 +95,7 @@ fun MiniPlayer(
                             text = state.currentSongTitle,
                             color = Color.White,
                             maxLines = 1,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 17.sp),
                             modifier = Modifier.basicMarquee(),
                         )
                         Text(
@@ -102,7 +103,7 @@ fun MiniPlayer(
                             color = TorstenColor.TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 14.sp),
                         )
                     }
                     // Right-edge gradient fade so titles don't hard-clip before the play button
@@ -124,19 +125,19 @@ fun MiniPlayer(
                         imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = if (state.isPlaying) "Pause" else "Play",
                         tint = Color.White,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(26.dp),
                     )
                 }
             }
 
-            // Progress bar
+            // Progress bar — thin, always visible
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp),
+                    .height(1.dp),
                 color = TorstenColor.Accent,
-                trackColor = Color.White.copy(alpha = 0.15f),
+                trackColor = Color.White.copy(alpha = 0.10f),
             )
         }
     }

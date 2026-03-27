@@ -19,6 +19,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -43,6 +48,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -126,9 +133,10 @@ fun SearchScreen(
     val recent  by viewModel.recentSearches.collectAsStateWithLifecycle()
     val genres  by viewModel.genres.collectAsStateWithLifecycle()
 
-    val context        = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val focusRequester = remember { FocusRequester() }
+    val context             = LocalContext.current
+    val coroutineScope      = rememberCoroutineScope()
+    val focusRequester      = remember { FocusRequester() }
+    val snackbarHostState   = remember { SnackbarHostState() }
 
     var contextSong by remember { mutableStateOf<SongDto?>(null) }
     val contextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -158,10 +166,12 @@ fun SearchScreen(
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                 TextButton(
                     onClick = {
+                        val s = song
                         contextSong = null
                         coroutineScope.launch {
                             val config = viewModel.getServerConfig().first()
-                            playbackViewModel.playSong(song, config)
+                            playbackViewModel.enqueueNext(s, config)
+                            snackbarHostState.showSnackbar("Playing next: ${s.title}")
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -204,6 +214,7 @@ fun SearchScreen(
     Scaffold(
         containerColor = DarkBackground,
         contentColor   = Color.White,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -291,16 +302,21 @@ fun SearchScreen(
                             )
                         }
                     } else {
+                        // Shared handler — every tap surface in the results (Top Result card,
+                        // "All" view track rows, "Tracks" filter rows) calls this one function.
+                        // Do NOT inline playback logic at individual call sites.
+                        fun onSongTapped(song: SongDto) {
+                            coroutineScope.launch {
+                                val (queue, startIndex) = viewModel.buildAlbumQueue(song)
+                                val config = viewModel.getServerConfig().first()
+                                playbackViewModel.playFromSongDtos(queue, config, startIndex = startIndex)
+                            }
+                        }
                         FilteredResults(
                             query          = query,
                             results        = results,
                             getCoverArtUrl = viewModel::getCoverArtUrl,
-                            onTrackClick   = { song ->
-                                coroutineScope.launch {
-                                    val config = viewModel.getServerConfig().first()
-                                    playbackViewModel.playSong(song, config)
-                                }
-                            },
+                            onTrackClick   = ::onSongTapped,
                             onTrackLongPress = { song -> contextSong = song },
                             onTrackMenuClick = { song -> contextSong = song },
                             onAlbumClick     = onAlbumClick,
@@ -415,9 +431,18 @@ private fun AllResultsContent(
     onShowAllAlbums: () -> Unit,
 ) {
     val topResult = remember(results, query) { computeTopResult(results, query) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollKeyboardDismiss = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y != 0f) keyboardController?.hide()
+                return Offset.Zero
+            }
+        }
+    }
 
     LazyColumn(
-        modifier       = Modifier.fillMaxSize(),
+        modifier       = Modifier.fillMaxSize().nestedScroll(scrollKeyboardDismiss),
         contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
     ) {
         // ── Top Result ────────────────────────────────────────────────────
@@ -504,8 +529,17 @@ private fun TrackListContent(
     onTrackLongPress: (SongDto) -> Unit,
     onTrackMenuClick: (SongDto) -> Unit,
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollKeyboardDismiss = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y != 0f) keyboardController?.hide()
+                return Offset.Zero
+            }
+        }
+    }
     LazyColumn(
-        modifier       = Modifier.fillMaxSize(),
+        modifier       = Modifier.fillMaxSize().nestedScroll(scrollKeyboardDismiss),
         contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
     ) {
         items(tracks, key = { "t_${it.id}" }) { song ->
@@ -526,8 +560,17 @@ private fun ArtistListContent(
     getCoverArtUrl: (id: String, size: Int) -> String?,
     onArtistClick: (artistId: String) -> Unit,
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollKeyboardDismiss = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y != 0f) keyboardController?.hide()
+                return Offset.Zero
+            }
+        }
+    }
     LazyColumn(
-        modifier       = Modifier.fillMaxSize(),
+        modifier       = Modifier.fillMaxSize().nestedScroll(scrollKeyboardDismiss),
         contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
     ) {
         items(artists, key = { "ar_${it.id}" }) { artist ->
@@ -546,8 +589,17 @@ private fun AlbumListContent(
     getCoverArtUrl: (id: String, size: Int) -> String?,
     onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollKeyboardDismiss = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y != 0f) keyboardController?.hide()
+                return Offset.Zero
+            }
+        }
+    }
     LazyColumn(
-        modifier       = Modifier.fillMaxSize(),
+        modifier       = Modifier.fillMaxSize().nestedScroll(scrollKeyboardDismiss),
         contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
     ) {
         items(albums, key = { "al_${it.id}" }) { album ->

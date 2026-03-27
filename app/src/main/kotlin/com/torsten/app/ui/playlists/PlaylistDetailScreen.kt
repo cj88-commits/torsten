@@ -325,7 +325,7 @@ fun PlaylistDetailScreen(
                                 }
                             }
 
-                            Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(20.dp))
 
                             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                                 // Name + edit
@@ -357,13 +357,13 @@ fun PlaylistDetailScreen(
                                     }
                                 }
 
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(8.dp))
 
                                 val meta = buildString {
                                     append("${tracks.size} ${if (tracks.size == 1) "track" else "tracks"}")
                                     if (playlist.duration > 0) append(" · ${formatDuration(playlist.duration)}")
                                 }
-                                Text(meta, style = MaterialTheme.typography.bodySmall, color = TorstenColor.TextTertiary)
+                                Text(meta, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f))
 
                                 // ── Offline indicator pill ────────────────────
                                 if (state.isShowingCached) {
@@ -538,21 +538,16 @@ private fun PlaylistDownloadButton(
     val isComplete = downloadState == DownloadState.COMPLETE
     val isPartial  = downloadState == DownloadState.PARTIAL
 
-    val borderColor  = when {
-        isComplete -> null
-        isActive   -> Color.White.copy(alpha = 0.2f)
-        else       -> Color.White.copy(alpha = 0.3f)
-    }
-    val bgColor      = if (isComplete) TorstenColor.Success else Color.Transparent
+    val borderColor  = if (isActive) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.3f)
     val contentColor = if (isActive) TorstenColor.TextTertiary else Color.White
 
     Surface(
         shape         = RoundedCornerShape(50),
-        border        = borderColor?.let { BorderStroke(1.dp, it) },
-        color         = bgColor,
+        border        = BorderStroke(1.dp, borderColor),
+        color         = Color.Transparent,
         contentColor  = contentColor,
         modifier      = Modifier
-            .height(40.dp)
+            .size(40.dp)
             .combinedClickable(
                 onClick = {
                     when (downloadState) {
@@ -567,15 +562,10 @@ private fun PlaylistDownloadButton(
                 },
             ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Box(contentAlignment = Alignment.Center) {
             when (downloadState) {
                 DownloadState.NONE -> {
-                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Download", style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.Download, contentDescription = "Download", modifier = Modifier.size(18.dp))
                 }
                 DownloadState.DOWNLOADING -> {
                     CircularProgressIndicator(
@@ -583,23 +573,15 @@ private fun PlaylistDownloadButton(
                         strokeWidth = 2.dp,
                         color       = TorstenColor.TextTertiary,
                     )
-                    Spacer(Modifier.width(4.dp))
-                    Text("Downloading…", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.COMPLETE -> {
-                    Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Downloaded ✓", style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.CheckCircle, contentDescription = "Saved", modifier = Modifier.size(18.dp))
                 }
                 DownloadState.PARTIAL -> {
-                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Resume", style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.Download, contentDescription = "Resume", modifier = Modifier.size(18.dp))
                 }
                 else -> {
-                    Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Download", style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.Download, contentDescription = "Download", modifier = Modifier.size(18.dp))
                 }
             }
         }

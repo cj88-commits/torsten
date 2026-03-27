@@ -18,11 +18,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
@@ -140,7 +139,7 @@ fun DownloadsScreen(
 
             item {
                 Text(
-                    text = "Downloads",
+                    text = "Offline Library",
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
@@ -172,8 +171,8 @@ fun DownloadsScreen(
                         )
                     }
                     SectionHeader(
-                        title = "Downloaded · ${completedDownloads.size}",
-                        modifier = Modifier.padding(top = 4.dp),
+                        title = "Albums",
+                        modifier = Modifier.padding(top = 12.dp),
                     )
                 }
                 itemsIndexed(completedDownloads, key = { _, a -> a.id }) { _, album ->
@@ -217,8 +216,8 @@ fun DownloadsScreen(
                         color = TorstenColor.Surface,
                     )
                     SectionHeader(
-                        title = "Downloaded Playlists · ${downloadedPlaylists.size}",
-                        modifier = Modifier.padding(top = 4.dp),
+                        title = "Playlists",
+                        modifier = Modifier.padding(top = 12.dp),
                     )
                 }
                 itemsIndexed(downloadedPlaylists, key = { _, p -> p.playlistId }) { _, playlist ->
@@ -338,10 +337,10 @@ private fun CompletedDownloadRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Art with badge
+        // Art with subtle offline indicator
         Box(modifier = Modifier.size(56.dp)) {
             AsyncImage(
                 model = coverArtImageRequest(context, coverArtUrl, album.coverArtId, isOnline),
@@ -352,21 +351,15 @@ private fun CompletedDownloadRow(
                     .clip(RoundedCornerShape(8.dp))
                     .background(TorstenColor.ElevatedSurface),
             )
-            // Downloaded badge
-            Box(
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.7f),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(16.dp)
-                    .background(TorstenColor.Success, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(12.dp),
-                )
-            }
+                    .padding(3.dp)
+                    .size(12.dp),
+            )
         }
 
         Spacer(Modifier.width(12.dp))
@@ -540,7 +533,7 @@ private fun DownloadedPlaylistRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.size(56.dp)) {
@@ -553,20 +546,15 @@ private fun DownloadedPlaylistRow(
                     .clip(RoundedCornerShape(8.dp))
                     .background(TorstenColor.ElevatedSurface),
             )
-            Box(
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.7f),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(16.dp)
-                    .background(TorstenColor.Success, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(12.dp),
-                )
-            }
+                    .padding(3.dp)
+                    .size(12.dp),
+            )
         }
 
         Spacer(Modifier.width(12.dp))

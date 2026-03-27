@@ -92,7 +92,7 @@ fun ArtistDetailScreen(
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val topTracks by viewModel.topTracks.collectAsStateWithLifecycle()
     val displayTopTracks by viewModel.displayTopTracks.collectAsStateWithLifecycle()
-    val fullTopTracks by viewModel.fullTopTracks.collectAsStateWithLifecycle()
+    val artistSongs by viewModel.artistSongs.collectAsStateWithLifecycle()
     val artistImageUrl by viewModel.artistLargeImageUrl.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val topTracksLoading by viewModel.topTracksLoading.collectAsStateWithLifecycle()
@@ -122,12 +122,21 @@ fun ArtistDetailScreen(
         }
     }
 
-    fun playLbTracks(startIndex: Int, preservePriority: Boolean = false) {
+    fun playAllArtistSongs(shuffle: Boolean) {
         scope.launch {
-            val dtos = viewModel.fullTopTracksForPlayback()
+            val songs = viewModel.allArtistSongsForPlayback()
+            if (songs.isEmpty()) return@launch
+            val config = viewModel.getServerConfig().first()
+            playbackViewModel.playFromSongDtos(songs, config, shuffle = shuffle)
+        }
+    }
+
+    fun playQueueForTopTrack(tappedSong: SongEntity) {
+        scope.launch {
+            val (dtos, startIndex) = viewModel.buildQueueForTopTrack(tappedSong)
             if (dtos.isEmpty()) return@launch
             val config = viewModel.getServerConfig().first()
-            playbackViewModel.playFromSongDtos(dtos, config, startIndex = startIndex, preservePriorityQueue = preservePriority)
+            playbackViewModel.playFromSongDtos(dtos, config, startIndex = startIndex, preservePriorityQueue = true)
         }
     }
 
@@ -154,10 +163,22 @@ fun ArtistDetailScreen(
             item {
                 ActionRow(
                     isLoading = isLoading,
-                    hasTopTracks = topTracks.isNotEmpty(),
-                    onPlay = { playTracks(shuffle = false) },
-                    onShuffle = { playTracks(shuffle = true) },
-                    onInstantMix = { topTracks.firstOrNull()?.let(onStartInstantMix) },
+                    hasTopTracks = artistSongs.isNotEmpty(),
+                    onPlay = { playAllArtistSongs(shuffle = false) },
+                    onShuffle = { playAllArtistSongs(shuffle = true) },
+                    onInstantMix = {
+                        val seed = topTracks.firstOrNull()
+                            ?: artistSongs.firstOrNull()?.let { song ->
+                                SongDto(
+                                    id = song.id,
+                                    title = song.title,
+                                    artistId = song.artistId,
+                                    albumId = song.albumId,
+                                    duration = song.duration,
+                                )
+                            }
+                        seed?.let(onStartInstantMix)
+                    },
                 )
             }
 
@@ -168,13 +189,12 @@ fun ArtistDetailScreen(
             } else if (displayTopTracks.isNotEmpty()) {
                 item { SectionHeader(title = "Top Tracks") }
                 itemsIndexed(displayTopTracks) { index, track ->
-                    val fullIndex = fullTopTracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
                     LbTopTrackRow(
                         number = index + 1,
                         song = track,
                         coverArtUrl = viewModel.getCoverArtUrlForSong(track, 150),
                         isOnline = isOnline,
-                        onClick = { playLbTracks(startIndex = fullIndex, preservePriority = true) },
+                        onClick = { playQueueForTopTrack(track) },
                         onMenuClick = { contextLbSong = track },
                     )
                 }

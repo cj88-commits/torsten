@@ -15,6 +15,7 @@ import com.torsten.app.data.db.entity.ArtistEntity
 import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.network.ConnectivityMonitor
 import com.torsten.app.data.recommendation.ArtistTopTracksRepository
+import com.torsten.app.data.recommendation.ArtistTopTracksSelector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 class ArtistDetailViewModel(
     private val db: AppDatabase,
@@ -58,6 +60,9 @@ class ArtistDetailViewModel(
 
     private val _fullTopTracks = MutableStateFlow<List<SongEntity>>(emptyList())
     val fullTopTracks: StateFlow<List<SongEntity>> = _fullTopTracks.asStateFlow()
+
+    private val _artistSongs = MutableStateFlow<List<SongEntity>>(emptyList())
+    val artistSongs: StateFlow<List<SongEntity>> = _artistSongs.asStateFlow()
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -94,6 +99,9 @@ class ArtistDetailViewModel(
                 _topTracksLoading.value = false
                 return@launch
             }
+            val songs = db.songDao().getByArtistId(artistId)
+            Timber.d("[ArtistDetail] artistId='$artistId' artistName='$artistName' songCount=${songs.size}")
+            _artistSongs.value = songs
             val result = runCatching {
                 artistTopTracksRepository.getTopTracks(artistId, artistName)
             }.getOrNull()
@@ -101,6 +109,13 @@ class ArtistDetailViewModel(
                 _displayTopTracks.value = result.displayTracks
                 _fullTopTracks.value = result.fullTracks
             }
+            // Re-query after hydration: getTopTracks may have fetched new songs from the API,
+            // and byName picks up compilation/feature tracks the byId query misses.
+            val byId = db.songDao().getByArtistId(artistId)
+            val byName = db.songDao().getSongsByArtistName(artistName)
+            val allSongs = (byId + byName).distinctBy { it.id }
+            Timber.d("[ArtistDetail] post-hydration allSongs.size=${allSongs.size} (byId=${byId.size} byName=${byName.size})")
+            _artistSongs.value = allSongs
             _topTracksLoading.value = false
         }
     }
@@ -137,6 +152,71 @@ class ArtistDetailViewModel(
                 starred = if (song.starred) "true" else null,
             )
         }
+    }
+
+    /**
+     * Build the playback queue for when the user taps a top-5 track.
+     *
+     * Returns the full 20-track queue (top five in original order + shuffled remainder)
+     * together with the [startIndex] of the tapped song. Pass both to [playFromSongDtos]
+     * so Media3 starts at the tapped position and tracks above it appear as history.
+     */
+    suspend fun buildQueueForTopTrack(tappedSong: SongEntity): Pair<List<SongDto>, Int> = withContext(Dispatchers.IO) {
+        Timber.d("[ArtistTop] buildTopTrackQueue: topFive.size=${_displayTopTracks.value.size} allArtistSongs.size=${_artistSongs.value.size}")
+        val (entities, _) = ArtistTopTracksSelector.buildTopTrackQueue(
+            tappedSong = tappedSong,
+            topFive = _displayTopTracks.value,
+            allArtistSongs = _artistSongs.value,
+        )
+        Timber.d("[ArtistTop] buildTopTrackQueue: result.size=${entities.size}")
+        val dtos = entities.mapNotNull { song ->
+            val album = db.albumDao().getById(song.albumId) ?: return@mapNotNull null
+            SongDto(
+                id = song.id,
+                title = song.title,
+                album = album.title,
+                albumId = song.albumId,
+                artist = album.artistName,
+                artistId = song.artistId,
+                track = song.trackNumber,
+                discNumber = song.discNumber,
+                duration = song.duration,
+                bitRate = song.bitRate,
+                suffix = song.suffix,
+                contentType = song.contentType,
+                coverArt = album.coverArtId,
+                starred = if (song.starred) "true" else null,
+            )
+        }
+        // Re-derive startIndex in the DTO list (mapNotNull may have dropped songs)
+        val startIndex = dtos.indexOfFirst { it.id == tappedSong.id }.coerceAtLeast(0)
+        Timber.d("[ArtistTop] buildTopTrackQueue: dtos.size=${dtos.size} startIndex=$startIndex")
+        Pair(dtos, startIndex)
+    }
+
+    /** All artist songs sorted by disc/track for Play and Shuffle buttons. */
+    suspend fun allArtistSongsForPlayback(): List<SongDto> = withContext(Dispatchers.IO) {
+        _artistSongs.value
+            .sortedWith(compareBy({ it.discNumber }, { it.trackNumber }))
+            .mapNotNull { song ->
+                val album = db.albumDao().getById(song.albumId) ?: return@mapNotNull null
+                SongDto(
+                    id = song.id,
+                    title = song.title,
+                    album = album.title,
+                    albumId = song.albumId,
+                    artist = album.artistName,
+                    artistId = song.artistId,
+                    track = song.trackNumber,
+                    discNumber = song.discNumber,
+                    duration = song.duration,
+                    bitRate = song.bitRate,
+                    suffix = song.suffix,
+                    contentType = song.contentType,
+                    coverArt = album.coverArtId,
+                    starred = if (song.starred) "true" else null,
+                )
+            }
     }
 
     fun getServerConfig(): Flow<ServerConfig> = configStore.serverConfig

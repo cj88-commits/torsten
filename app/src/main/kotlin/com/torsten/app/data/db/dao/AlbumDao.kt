@@ -36,6 +36,10 @@ interface AlbumDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(albums: List<AlbumEntity>)
 
+    /** Insert albums that don't already exist — skips existing rows to preserve download state. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(albums: List<AlbumEntity>)
+
     @Query("DELETE FROM albums")
     suspend fun deleteAll()
 

@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.api.dto.AlbumDto
-import com.torsten.app.data.api.dto.GenreDto
 import com.torsten.app.data.datastore.ServerConfigStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -24,7 +23,6 @@ data class HomeUiState(
     val recentlyPlayed: List<AlbumDto> = emptyList(),
     val newAdditions: List<AlbumDto> = emptyList(),
     val mostPlayed: List<AlbumDto> = emptyList(),
-    val genres: List<GenreDto> = emptyList(),
     val error: String? = null,
 )
 
@@ -55,18 +53,11 @@ class HomeViewModel(
                     val recent   = async(Dispatchers.IO) { client.getAlbumList2("recent",   10) }
                     val newest   = async(Dispatchers.IO) { client.getAlbumList2("newest",   10) }
                     val frequent = async(Dispatchers.IO) { client.getAlbumList2("frequent", 10) }
-                    // Genres are optional — a failure must not take down the rest of the feed.
-                    val genres   = async(Dispatchers.IO) {
-                        runCatching { client.getGenres() }
-                            .onFailure { Timber.tag("[UI]").w(it, "getGenres failed — hiding row") }
-                            .getOrElse { emptyList() }
-                    }
                     _state.value = HomeUiState(
                         isLoading      = false,
                         recentlyPlayed = recent.await(),
                         newAdditions   = newest.await(),
                         mostPlayed     = frequent.await(),
-                        genres         = genres.await(),
                     )
                 }
             } catch (e: Exception) {

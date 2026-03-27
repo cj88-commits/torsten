@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -38,7 +39,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,7 +67,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.DownloadState
@@ -350,48 +350,21 @@ fun AlbumDetailScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     // Metadata column
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                        // Album title
-                        Text(
-                            text = album?.title ?: initialTitle,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-
-                        // Downloaded inline label
-                        if (downloadState == DownloadState.COMPLETE) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "✓ Downloaded",
-                                fontSize = 12.sp,
-                                color = TorstenColor.Success,
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // Artist name (tappable) + star
-                        val hasArtist = album?.artistId?.isNotEmpty() == true
+                        // Title + star on the same row
+                        val currentAlbum = album
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = album?.artistName ?: "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = if (hasArtist) 0.9f else 0.6f),
-                                maxLines = 1,
+                                text = album?.title ?: initialTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color.White,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable(
-                                        enabled = hasArtist,
-                                        onClick = { album?.artistId?.let { onNavigateToArtist(it) } },
-                                    ),
+                                modifier = Modifier.weight(1f),
                             )
-                            val currentAlbum = album
                             if (currentAlbum != null) {
                                 IconButton(
                                     onClick = { viewModel.toggleAlbumStar(currentAlbum) },
@@ -400,14 +373,30 @@ fun AlbumDetailScreen(
                                     Icon(
                                         imageVector = if (currentAlbum.starred) Icons.Filled.Star else Icons.Outlined.StarOutline,
                                         contentDescription = if (currentAlbum.starred) "Remove from favourites" else "Add to favourites",
-                                        tint = if (currentAlbum.starred) Color(0xFFFFC107) else Color.White.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(18.dp),
+                                        tint = if (currentAlbum.starred) Color(0xFFFFC107) else Color.White.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Artist name (tappable)
+                        val hasArtist = album?.artistId?.isNotEmpty() == true
+                        Text(
+                            text = album?.artistName ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = if (hasArtist) 0.9f else 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(
+                                enabled = hasArtist,
+                                onClick = { album?.artistId?.let { onNavigateToArtist(it) } },
+                            ),
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Metadata row: year · tracks · duration on one line
                         val metaParts = buildList {
@@ -420,7 +409,7 @@ fun AlbumDetailScreen(
                             Text(
                                 text = metaParts.joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TorstenColor.TextTertiary,
+                                color = Color.White.copy(alpha = 0.55f),
                             )
                         }
                     }
@@ -437,7 +426,7 @@ fun AlbumDetailScreen(
                 ) {
                     Button(
                         onClick = { tryPlay(songs, album) },
-                        modifier = Modifier.height(40.dp),
+                        modifier = Modifier.height(40.dp).widthIn(min = 80.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
@@ -452,6 +441,34 @@ fun AlbumDetailScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Play", color = Color.Black)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (album != null && songs.isNotEmpty()) {
+                                coroutineScope.launch {
+                                    val config = viewModel.getServerConfig().first()
+                                    val coverArtUrl = album?.coverArtId?.let { viewModel.getCoverArtUrl(it, 300) }
+                                    playbackViewModel.playAlbum(
+                                        songs = songs.shuffled(),
+                                        album = album!!,
+                                        startIndex = 0,
+                                        config = config,
+                                        coverArtUrl = coverArtUrl,
+                                        preservePriorityQueue = false,
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.height(40.dp).widthIn(min = 80.dp),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                    ) {
+                        Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Shuffle")
                     }
 
                     DownloadButton(
@@ -516,26 +533,23 @@ private fun DownloadButton(
     // OutlinedButton doesn't expose onLongClick, so we build a look-alike using
     // Surface + combinedClickable — the only reliable way to have separate tap / long-press handlers.
     val borderColor = when {
-        isComplete -> null
-        isFailed -> TorstenColor.Error
-        isActive -> Color.White.copy(alpha = 0.2f)
+        isActive -> Color.White.copy(alpha = 0.15f)
         else -> Color.White.copy(alpha = 0.3f)
     }
-    val bgColor = if (isComplete) TorstenColor.Success else Color.Transparent
+    val bgColor = Color.Transparent
     val contentColor = when {
-        isComplete -> Color.White
-        isFailed -> TorstenColor.Error
         isActive -> TorstenColor.TextTertiary
+        isFailed -> TorstenColor.Error
         else -> Color.White
     }
 
     Surface(
         shape = RoundedCornerShape(50),
-        border = borderColor?.let { BorderStroke(1.dp, it) },
+        border = BorderStroke(1.dp, borderColor),
         color = bgColor,
         contentColor = contentColor,
         modifier = Modifier
-            .height(40.dp)
+            .size(40.dp)
             .combinedClickable(
                 onClick = {
                     when (downloadState) {
@@ -550,15 +564,10 @@ private fun DownloadButton(
                 },
             ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Box(contentAlignment = Alignment.Center) {
             when (downloadState) {
                 DownloadState.NONE -> {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Download", style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.Download, contentDescription = "Download", modifier = Modifier.size(18.dp))
                 }
                 DownloadState.QUEUED -> {
                     CircularProgressIndicator(
@@ -566,8 +575,6 @@ private fun DownloadButton(
                         strokeWidth = 2.dp,
                         color = TorstenColor.TextTertiary,
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Queued…", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.DOWNLOADING -> {
                     CircularProgressIndicator(
@@ -575,18 +582,12 @@ private fun DownloadButton(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("$downloadProgress%", style = MaterialTheme.typography.labelLarge)
                 }
                 DownloadState.COMPLETE -> {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Downloaded ✓", style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.CheckCircle, contentDescription = "Saved", modifier = Modifier.size(18.dp))
                 }
                 DownloadState.PARTIAL, DownloadState.FAILED -> {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Retry", style = MaterialTheme.typography.labelLarge, color = TorstenColor.Error)
+                    Icon(Icons.Filled.Download, contentDescription = "Retry", modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -622,7 +623,7 @@ private fun TrackRow(
             Text(
                 text = song.trackNumber.toString(),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.5f),
+                color = Color.White.copy(alpha = 0.35f),
                 modifier = Modifier.width(32.dp),
             )
         }

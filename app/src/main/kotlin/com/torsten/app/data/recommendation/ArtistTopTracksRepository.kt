@@ -6,8 +6,10 @@ import com.torsten.app.data.db.dao.AlbumDao
 import com.torsten.app.data.db.dao.ArtistMbidCacheDao
 import com.torsten.app.data.db.dao.ArtistTopTracksCacheDao
 import com.torsten.app.data.db.dao.SongDao
+import com.torsten.app.data.db.entity.AlbumEntity
 import com.torsten.app.data.db.entity.ArtistMbidCacheEntity
 import com.torsten.app.data.db.entity.ArtistTopTracksCacheEntity
+import com.torsten.app.data.db.entity.DownloadState
 import com.torsten.app.data.db.entity.SongEntity
 import com.torsten.app.data.metabrainz.ListenBrainzClient
 import com.torsten.app.data.metabrainz.MusicBrainzClient
@@ -71,8 +73,12 @@ class ArtistTopTracksRepository(
             val ordered = ids.mapNotNull { songMap[it] }
             if (ordered.isNotEmpty()) {
                 Timber.tag("[ArtistTop]").d("Cache hit for $artistName: ${ordered.size} tracks")
+                val byId = songDao.getByArtistId(artistId)
+                val byName = songDao.getSongsByArtistName(artistName)
+                val allSongs = (byId + byName).distinctBy { it.id }
+                Timber.tag("[ArtistTop]").d("Cache hit allSongs for $artistName: byId=${byId.size} byName=${byName.size} merged=${allSongs.size}")
                 return ArtistTopResult(
-                    displayTracks = ArtistTopTracksSelector.selectTopFive(ordered),
+                    displayTracks = ArtistTopTracksSelector.selectTopFive(ordered, allSongs, artistName),
                     fullTracks = ArtistTopTracksSelector.selectFullQueue(ordered),
                 )
             }
@@ -95,7 +101,7 @@ class ArtistTopTracksRepository(
         // 4. Resolve MBID
         val mbid = resolveMbid(artistId, artistName) ?: run {
             Timber.tag("[ArtistTop]").d("MBID not resolved for $artistName — falling back to title sort")
-            return localFallback(songPool)
+            return localFallback(songPool, artistName)
         }
 
         // 5. Fetch LB stats
@@ -103,17 +109,17 @@ class ArtistTopTracksRepository(
         Timber.tag("[ArtistTop]").d("LB candidates for $artistName: ${candidates.size}")
         if (candidates.isEmpty()) {
             Timber.tag("[ArtistTop]").d("No LB candidates for $artistName — falling back to title sort")
-            return localFallback(songPool)
+            return localFallback(songPool, artistName)
         }
 
         // 6. Match
         val matched = ArtistTopTracksSelector.matchCandidates(candidates, songPool)
         Timber.tag("[ArtistTop]").d("Total matches for $artistName: ${matched.size}")
-        if (matched.isEmpty()) return localFallback(songPool)
+        if (matched.isEmpty()) return localFallback(songPool, artistName)
 
         // 7. Build result
         val fullTracks = ArtistTopTracksSelector.selectFullQueue(matched)
-        val displayTracks = ArtistTopTracksSelector.selectTopFive(matched)
+        val displayTracks = ArtistTopTracksSelector.selectTopFive(matched, songPool, artistName)
         Timber.tag("[ArtistTop]").d(
             "Display top 5 for $artistName: [${displayTracks.joinToString { "'${it.title}' (album=${it.albumId})" }}]",
         )
@@ -153,10 +159,13 @@ class ArtistTopTracksRepository(
                             // Gson bypasses Kotlin null-safety; guard title explicitly.
                             @Suppress("SENSELESS_COMPARISON")
                             val safeTitle = if (dto.title == null) "" else dto.title
+                            // Use the outer artistId as fallback when the song DTO omits it —
+                            // this ensures getByArtistId can find these songs later.
+                            val songArtistId = dto.artistId?.takeIf { it.isNotEmpty() } ?: artistId
                             SongEntity(
                                 id = dto.id,
                                 albumId = albumDto.id,
-                                artistId = dto.artistId.orEmpty(),
+                                artistId = songArtistId,
                                 title = safeTitle,
                                 trackNumber = dto.track ?: 0,
                                 discNumber = dto.discNumber ?: 1,
@@ -170,6 +179,24 @@ class ArtistTopTracksRepository(
                             )
                         }
                         songDao.upsertAll(songs)
+                        // Ensure the album entity exists so getSongsByArtistName JOIN works.
+                        // Uses IGNORE conflict strategy — skips existing rows to preserve download state.
+                        albumDao.insertIfAbsent(listOf(AlbumEntity(
+                            id = albumDto.id,
+                            artistId = albumDto.artistId?.takeIf { it.isNotEmpty() } ?: artistId,
+                            artistName = albumDto.artist ?: artistName,
+                            title = albumDto.name,
+                            year = albumDto.year,
+                            genre = albumDto.genre,
+                            songCount = albumWithSongs.songCount,
+                            duration = albumWithSongs.duration,
+                            coverArtId = albumDto.coverArt,
+                            starred = albumDto.starred != null,
+                            downloadState = DownloadState.NONE,
+                            downloadProgress = 0,
+                            downloadedAt = null,
+                            lastUpdated = now,
+                        )))
                         fetched.incrementAndGet()
                     }.onFailure { e ->
                         Timber.tag("[ArtistTop]").w("Failed to fetch album ${albumDto.id}: ${e.message}")
@@ -198,8 +225,11 @@ class ArtistTopTracksRepository(
         return mbid
     }
 
-    private fun localFallback(songs: List<SongEntity>): ArtistTopResult {
+    private fun localFallback(songs: List<SongEntity>, artistName: String = ""): ArtistTopResult {
         val sorted = songs.sortedBy { it.title }
-        return ArtistTopResult(displayTracks = sorted.take(5), fullTracks = sorted.take(20))
+        return ArtistTopResult(
+            displayTracks = ArtistTopTracksSelector.selectTopFive(emptyList(), songs, artistName),
+            fullTracks = sorted.take(20),
+        )
     }
 }

@@ -20,20 +20,18 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,17 +42,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.torsten.app.data.api.dto.AlbumDto
-import com.torsten.app.data.api.dto.GenreDto
 import com.torsten.app.ui.common.AlbumCoverArt
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.SectionHeader
 import com.torsten.app.ui.theme.Radius
 import com.torsten.app.ui.theme.TorstenColor
-import java.util.Calendar
 
-private val CardWidth   = 150.dp
-private val CardSpacing = 12.dp
-private val RowPadding  = 16.dp
+private val CardWidth    = 150.dp
+private val CardSpacing  = 12.dp
+private val RowPadding   = 16.dp
+private val HeroArtSize  = 104.dp
+private val SectionGap   = 28.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,13 +64,6 @@ fun HomeScreen(
     onSettingsClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val greeting = remember {
-        when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-            in 5..11 -> "Good morning"
-            in 12..17 -> "Good afternoon"
-            else -> "Good evening"
-        }
-    }
 
     Scaffold(containerColor = DarkBackground) { innerPadding ->
         when {
@@ -95,15 +86,10 @@ fun HomeScreen(
                         .statusBarsPadding(),
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        // ── Greeting header ──────────────────────────────────
+
+                        // ── Header ────────────────────────────────────────────
                         item {
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = greeting,
-                                fontSize = 14.sp,
-                                color = Color.White.copy(alpha = 0.5f),
-                                modifier = Modifier.padding(horizontal = RowPadding),
-                            )
+                            Spacer(Modifier.height(20.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -113,7 +99,7 @@ fun HomeScreen(
                             ) {
                                 Text(
                                     text = "Torsten",
-                                    fontSize = 28.sp,
+                                    fontSize = 30.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
                                 )
@@ -125,9 +111,30 @@ fun HomeScreen(
                                     )
                                 }
                             }
-                            Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(28.dp))
                         }
 
+                        // ── Hero: Continue Listening ───────────────────────────
+                        item {
+                            val hero = state.recentlyPlayed.firstOrNull()
+                            if (state.isLoading || hero != null) {
+                                SectionHeader(title = "Continue Listening")
+                                if (state.isLoading) {
+                                    HeroSkeleton()
+                                } else {
+                                    ContinueListeningHero(
+                                        album = hero!!,
+                                        coverArtUrl = hero.coverArt?.let {
+                                            viewModel.getCoverArtUrl(it, 600)
+                                        },
+                                        onAlbumClick = onAlbumClick,
+                                    )
+                                }
+                                Spacer(Modifier.height(SectionGap))
+                            }
+                        }
+
+                        // ── Recently Played ────────────────────────────────────
                         item {
                             AlbumRow(
                                 title          = "Recently Played",
@@ -139,6 +146,7 @@ fun HomeScreen(
                             )
                         }
 
+                        // ── New Additions ──────────────────────────────────────
                         item {
                             AlbumRow(
                                 title          = "New Additions",
@@ -150,6 +158,7 @@ fun HomeScreen(
                             )
                         }
 
+                        // ── Most Played ────────────────────────────────────────
                         item {
                             AlbumRow(
                                 title          = "Most Played",
@@ -161,20 +170,86 @@ fun HomeScreen(
                             )
                         }
 
-                        item {
-                            GenreRow(
-                                genres       = state.genres,
-                                isLoading    = state.isLoading,
-                                onGenreClick = onGenreClick,
-                            )
-                        }
-
-                        item { Spacer(Modifier.height(16.dp)) }
+                        item { Spacer(Modifier.height(20.dp)) }
                     }
                 }
             }
         }
     }
+}
+
+// ─── Hero card ────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ContinueListeningHero(
+    album: AlbumDto,
+    coverArtUrl: String?,
+    onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = RowPadding)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radius.card))
+            .background(TorstenColor.ElevatedSurface)
+            .clickable { onAlbumClick(album.id, album.name) }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AlbumCoverArt(
+            coverArtUrl        = coverArtUrl,
+            coverArtId         = album.coverArt,
+            contentDescription = album.name,
+            isOnline           = true,
+            modifier           = Modifier
+                .size(HeroArtSize)
+                .clip(RoundedCornerShape(Radius.card)),
+        )
+
+        Spacer(Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text       = album.name,
+                fontSize   = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color      = Color.White,
+                maxLines   = 2,
+                overflow   = TextOverflow.Ellipsis,
+            )
+            if (!album.artist.isNullOrBlank()) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text     = album.artist,
+                    fontSize = 13.sp,
+                    color    = TorstenColor.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Icon(
+            imageVector        = Icons.Filled.PlayArrow,
+            contentDescription = "Play",
+            tint               = Color.White,
+            modifier           = Modifier.size(36.dp),
+        )
+    }
+}
+
+@Composable
+private fun HeroSkeleton() {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = RowPadding)
+            .fillMaxWidth()
+            .height(HeroArtSize + 24.dp)
+            .clip(RoundedCornerShape(Radius.card))
+            .background(TorstenColor.ElevatedSurface),
+    )
 }
 
 // ─── Album section row ────────────────────────────────────────────────────────
@@ -212,69 +287,15 @@ private fun AlbumRow(
             ) {
                 items(albums, key = { it.id }) { album ->
                     HomeAlbumCard(
-                        album          = album,
-                        coverArtUrl    = album.coverArt?.let { getCoverArtUrl(it, 300) },
-                        onAlbumClick   = onAlbumClick,
+                        album       = album,
+                        coverArtUrl = album.coverArt?.let { getCoverArtUrl(it, 300) },
+                        onAlbumClick = onAlbumClick,
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
-    }
-}
-
-// ─── Genre section row ────────────────────────────────────────────────────────
-
-@Composable
-private fun GenreRow(
-    genres: List<GenreDto>,
-    isLoading: Boolean,
-    onGenreClick: (String) -> Unit = {},
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SectionHeader(title = "Genres")
-
-        if (isLoading) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = RowPadding),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(8) { SkeletonPill() }
-            }
-        } else if (genres.isEmpty()) {
-            Text(
-                text = "No genres found",
-                style = MaterialTheme.typography.bodySmall,
-                color = TorstenColor.TextSecondary,
-                modifier = Modifier.padding(horizontal = RowPadding, vertical = 4.dp),
-            )
-        } else {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = RowPadding),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(genres, key = { it.name }) { genre ->
-                    SuggestionChip(
-                        onClick = { onGenreClick(genre.name) },
-                        label = {
-                            Text(
-                                text = genre.name,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color.White,
-                            )
-                        },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = TorstenColor.ElevatedSurface,
-                        ),
-                        border = SuggestionChipDefaults.suggestionChipBorder(
-                            enabled = true,
-                            borderColor = Color.White.copy(alpha = 0.2f),
-                        ),
-                    )
-                }
-            }
-        }
+        Spacer(Modifier.height(SectionGap))
     }
 }
 
@@ -304,12 +325,12 @@ private fun HomeAlbumCard(
         Spacer(Modifier.height(6.dp))
 
         Text(
-            text      = album.name,
-            fontSize  = 12.sp,
+            text       = album.name,
+            fontSize   = 12.sp,
             fontWeight = FontWeight.Medium,
-            color     = Color.White,
-            maxLines  = 1,
-            overflow  = TextOverflow.Ellipsis,
+            color      = Color.White,
+            maxLines   = 1,
+            overflow   = TextOverflow.Ellipsis,
         )
 
         Text(
@@ -350,17 +371,6 @@ private fun SkeletonCard() {
                 .background(TorstenColor.ElevatedSurface),
         )
     }
-}
-
-@Composable
-private fun SkeletonPill() {
-    Box(
-        modifier = Modifier
-            .width(72.dp)
-            .height(32.dp)
-            .clip(RoundedCornerShape(50))
-            .background(TorstenColor.ElevatedSurface),
-    )
 }
 
 // ─── Error state ──────────────────────────────────────────────────────────────

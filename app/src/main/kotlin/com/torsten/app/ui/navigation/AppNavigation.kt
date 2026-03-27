@@ -754,8 +754,8 @@ private fun AppBottomBar(
                     restoreState = true
                 }
             },
-            icon = { Icon(Icons.Filled.Download, contentDescription = "Saved") },
-            label = { Text("Saved") },
+            icon = { Icon(Icons.Filled.Download, contentDescription = "Offline") },
+            label = { Text("Offline") },
             colors = itemColors,
         )
     }

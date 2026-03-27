@@ -21,9 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -51,6 +50,7 @@ import com.torsten.app.data.api.dto.PlaylistDto
 import com.torsten.app.ui.common.DarkBackground
 import com.torsten.app.ui.common.LibraryHeader
 import com.torsten.app.ui.common.LibraryTab
+import com.torsten.app.ui.common.SectionHeader
 import com.torsten.app.ui.common.shimmerBrush
 
 private fun formatDurationSecs(seconds: Int): String {
@@ -126,17 +126,12 @@ fun PlaylistsScreen(
                 currentTab = LibraryTab.PLAYLISTS,
                 onNavigateToAlbums = onNavigateToAlbums,
                 onNavigateToArtists = onNavigateToArtists,
+                actions = {
+                    IconButton(onClick = { showCreateDialog = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = "Create playlist", tint = Color.White)
+                    }
+                },
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showCreateDialog = true },
-                containerColor = Color.White,
-                contentColor = Color.Black,
-                elevation = FloatingActionButtonDefaults.elevation(0.dp),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Create playlist")
-            }
         },
     ) { innerPadding ->
         Column(
@@ -165,6 +160,7 @@ fun PlaylistsScreen(
                     }
                 }
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    item { SectionHeader(title = "Your Playlists") }
                     items(state.playlists, key = { it.id }) { playlist ->
                         PlaylistRow(
                             playlist = playlist,
@@ -172,7 +168,7 @@ fun PlaylistsScreen(
                             onClick = { onPlaylistClick(playlist.id, playlist.name) },
                         )
                     }
-                    item { Spacer(Modifier.height(88.dp)) } // FAB clearance
+                    item { Spacer(Modifier.height(16.dp)) }
                 }
             }
         }
@@ -185,16 +181,16 @@ private fun ShimmerPlaylistRow() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(72.dp)
+                .size(82.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(shimmer),
         )
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Box(
                 modifier = Modifier
@@ -225,12 +221,12 @@ private fun PlaylistRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(72.dp)
+                .size(82.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF1A1A1A)),
             contentAlignment = Alignment.Center,
@@ -247,24 +243,25 @@ private fun PlaylistRow(
             }
         }
 
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = playlist.name,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleSmall,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(3.dp))
             val meta = buildString {
                 append("${playlist.songCount} tracks")
                 if (playlist.duration > 0) append(" · ${formatDurationSecs(playlist.duration)}")
             }
             Text(
                 text = meta,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.5f),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.4f),
             )
         }
     }

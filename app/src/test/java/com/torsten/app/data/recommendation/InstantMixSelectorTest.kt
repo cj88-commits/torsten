@@ -214,6 +214,50 @@ class InstantMixSelectorTest {
         assertEquals(15, result.size)
     }
 
+    @Test
+    fun `fillToTarget with capped=14 and uncappedPool=30 returns exactly 20`() {
+        // capped has 14 songs (artist-diverse); uncappedPool has 30 (same 14 + 16 extra)
+        val capped = (1..14).map { song("c$it", "Capped $it", "artist$it") }
+        val extra = (1..16).map { song("e$it", "Extra $it", "extra$it") }
+        val uncappedPool = capped + extra // 30 songs, 16 not in capped
+        val result = InstantMixSelector.fillToTarget(capped, uncappedPool, target = 20)
+        assertEquals(20, result.size)
+    }
+
+    @Test
+    fun `fillToTarget with capped=14 and uncappedPool=5 unique extras returns 19`() {
+        // capped has 14; uncappedPool has 14 + 5 extras = 19 unique total
+        val capped = (1..14).map { song("c$it", "Capped $it", "artist$it") }
+        val extra = (1..5).map { song("e$it", "Extra $it", "extra$it") }
+        val uncappedPool = capped + extra
+        val result = InstantMixSelector.fillToTarget(capped, uncappedPool, target = 20)
+        assertEquals(19, result.size) // only 19 unique songs available
+    }
+
+    @Test
+    fun `fillToTarget with capped=20 returns exactly 20 without touching uncappedPool`() {
+        val capped = (1..20).map { song("c$it", "Capped $it", "artist$it") }
+        val uncappedPool = (1..30).map { song("p$it", "Pool $it", "extra$it") }
+        val result = InstantMixSelector.fillToTarget(capped, uncappedPool, target = 20)
+        assertEquals(20, result.size)
+        // All result songs should come from capped, not uncappedPool
+        val cappedIds = capped.map { it.id }.toSet()
+        assertTrue(result.all { it.id in cappedIds })
+    }
+
+    @Test
+    fun `fillToTarget result contains no duplicate song IDs`() {
+        // capped and uncappedPool overlap heavily — dedup must hold
+        val shared = (1..10).map { song("s$it", "Shared $it", "artist$it") }
+        val cappedOnly = (1..5).map { song("c$it", "Capped $it", "cappedOnly$it") }
+        val poolOnly = (1..10).map { song("p$it", "Pool $it", "poolOnly$it") }
+        val capped = shared + cappedOnly
+        val uncappedPool = shared + cappedOnly + poolOnly
+        val result = InstantMixSelector.fillToTarget(capped, uncappedPool, target = 20)
+        val ids = result.map { it.id }
+        assertEquals("Duplicate IDs found", ids.distinct(), ids)
+    }
+
     // ── assembleFinalMix ──────────────────────────────────────────────────────
 
     @Test
@@ -230,6 +274,30 @@ class InstantMixSelectorTest {
         val r1 = InstantMixSelector.assembleFinalMix(seed, pool)
         val r2 = InstantMixSelector.assembleFinalMix(seed, pool)
         assertEquals(r1, r2)
+    }
+
+    @Test
+    fun `assembleFinalMix with pool of 25 returns exactly 20`() {
+        val seed = song("seed", "Seed", "ArtistA")
+        val pool = (1..25).map { song("s$it", "Track $it", "ArtistB") }
+        val result = InstantMixSelector.assembleFinalMix(seed, pool, target = 20)
+        assertEquals(20, result.size)
+    }
+
+    @Test
+    fun `assembleFinalMix with pool of 19 returns 20 (seed + 19)`() {
+        val seed = song("seed", "Seed", "ArtistA")
+        val pool = (1..19).map { song("s$it", "Track $it", "ArtistB") }
+        val result = InstantMixSelector.assembleFinalMix(seed, pool, target = 20)
+        assertEquals(20, result.size)
+    }
+
+    @Test
+    fun `assembleFinalMix with pool smaller than target returns all available`() {
+        val seed = song("seed", "Seed", "ArtistA")
+        val pool = (1..5).map { song("s$it", "Track $it", "ArtistB") }
+        val result = InstantMixSelector.assembleFinalMix(seed, pool, target = 20)
+        assertEquals(6, result.size) // seed + 5
     }
 
     // ── interleaveMix — seed artist positioning ───────────────────────────────
@@ -330,6 +398,33 @@ class InstantMixSelectorTest {
         assertEquals(1, result.count { it.id == "seed" })
     }
 
+    // ── interleaveMix — size guarantees ──────────────────────────────────────
+
+    @Test
+    fun `interleaveMix with 30 song pool returns exactly 20`() {
+        val seed = song("seed", "Seed", "ArtistA")
+        val pool = (1..30).map { song("s$it", "Track $it", "Artist${it % 5}") }
+        val result = InstantMixSelector.interleaveMix(seed, pool, target = 20)
+        assertEquals(20, result.size)
+    }
+
+    @Test
+    fun `interleaveMix with 15 song pool returns 16 (seed + 15)`() {
+        val seed = song("seed", "Seed", "ArtistX")
+        val pool = (1..15).map { song("s$it", "Track $it", "Artist${it % 4}") }
+        val result = InstantMixSelector.interleaveMix(seed, pool, target = 20)
+        assertEquals(16, result.size)
+    }
+
+    @Test
+    fun `interleaveMix with single artist 30 songs returns exactly 20`() {
+        // All songs from same artist — deferred flush ensures we still reach 20
+        val seed = song("seed", "Seed", "ArtistA")
+        val pool = (1..30).map { song("s$it", "Track $it", "ArtistA") }
+        val result = InstantMixSelector.interleaveMix(seed, pool, target = 20)
+        assertEquals(20, result.size)
+    }
+
     // ── interleaveMix — ordering preservation ────────────────────────────────
 
     @Test
@@ -353,5 +448,86 @@ class InstantMixSelectorTest {
         val idxS3 = result.indexOfFirst { it.id == "3" }
         val idxS4 = result.indexOfFirst { it.id == "4" }
         assertTrue("ArtistB rank order violated: s3=$idxS3, s4=$idxS4", idxS3 < idxS4)
+    }
+
+    // ── End-to-end pipeline (getMix equivalent) ───────────────────────────────
+    //
+    // These tests exercise the full applyDiversityCap → fillToTarget → interleaveMix
+    // pipeline with realistic pool sizes, mirroring what getMix() produces after
+    // fetching from LB and Subsonic.
+
+    private fun runPipeline(
+        seed: SongEntity,
+        pool: List<SongEntity>,
+        target: Int = 20,
+    ): List<SongEntity> {
+        val capped = InstantMixSelector.applyDiversityCap(pool, target = target - 1, initialCap = 5, relaxedCap = 8)
+        val filled = InstantMixSelector.fillToTarget(capped, pool, target = target - 1)
+        return InstantMixSelector.interleaveMix(seed, filled, target = target)
+    }
+
+    @Test
+    fun `getMix result is always min(20, availableSongs) regardless of LB match count`() {
+        val seed = song("seed", "Seed", "SeedArtist")
+
+        // Large pool (≥ 19 companions) → always 20
+        val largePool = (1..25).map { song("s$it", "Track $it", "Artist${it % 6}") }
+        assertEquals(20, runPipeline(seed, largePool).size)
+
+        // Small pool (5 companions) → 6 (seed + 5)
+        val smallPool = (1..5).map { song("s$it", "Track $it", "Artist${it % 3}") }
+        assertEquals(6, runPipeline(seed, smallPool).size)
+    }
+
+    @Test
+    fun `getMix with 0 LB matches and 25 Subsonic candidates returns 20`() {
+        // Simulates: lbMatchCount=0, Subsonic batch returns 25 diverse songs
+        val seed = song("seed", "Seed", "Newkid")
+        val pool = (1..25).map { song("sub$it", "Similar $it", "SimilarArtist${it % 8}") }
+        val result = runPipeline(seed, pool)
+        assertEquals(20, result.size)
+    }
+
+    @Test
+    fun `getMix with 5 LB matches and 20 Subsonic candidates returns 20`() {
+        // Simulates: 5 LB-matched songs + 20 Subsonic songs (no overlap) = 25 total
+        val seed = song("seed", "Seed", "Newkid")
+        val lbSongs = (1..5).map { song("lb$it", "LB Track $it", "LbArtist$it") }
+        val subSongs = (1..20).map { song("sub$it", "Sub Track $it", "SubArtist${it % 5}") }
+        val pool = lbSongs + subSongs
+        val result = runPipeline(seed, pool)
+        assertEquals(20, result.size)
+    }
+
+    @Test
+    fun `getMix with 5 LB matches and 10 Subsonic candidates returns 15 when pool has 14 unique`() {
+        // Simulates: 5 LB-matched + 10 Subsonic but 1 Subsonic song duplicates an LB song
+        // → 14 unique companion songs → seed + 14 = 15
+        val seed = song("seed", "Seed", "Newkid")
+        val lbSongs = (1..5).map { song("lb$it", "LB Track $it", "LbArtist$it") }
+        // First Subsonic song is a duplicate of lbSongs[0]; remaining 9 are unique
+        val subSongs = listOf(lbSongs[0]) + (1..9).map { song("sub$it", "Sub Track $it", "SubArtist$it") }
+        val pool = (lbSongs + subSongs).distinctBy { it.id } // 14 unique
+        assertEquals(14, pool.size)
+        val result = runPipeline(seed, pool)
+        assertEquals(15, result.size) // seed + 14
+    }
+
+    @Test
+    fun `getMix pipeline produces no duplicate song IDs`() {
+        val seed = song("seed", "Seed", "SeedArtist")
+        val pool = (1..30).map { song("s$it", "Track $it", "Artist${it % 7}") }
+        val result = runPipeline(seed, pool)
+        val ids = result.map { it.id }
+        assertEquals("Duplicate IDs in mix", ids.distinct(), ids)
+    }
+
+    @Test
+    fun `getMix pipeline with single artist 30 songs reaches 20`() {
+        // Even with all songs from one artist, mix still reaches 20 (deferred flush)
+        val seed = song("seed", "Seed", "SeedArtist")
+        val pool = (1..30).map { song("s$it", "Track $it", "SameArtist") }
+        val result = runPipeline(seed, pool)
+        assertEquals(20, result.size)
     }
 }

@@ -14,6 +14,7 @@ import com.torsten.app.data.api.dto.SongDto
 import com.torsten.app.data.datastore.RecentSearchesStore
 import com.torsten.app.data.datastore.ServerConfig
 import com.torsten.app.data.datastore.ServerConfigStore
+import com.torsten.app.data.db.dao.SongDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -45,6 +46,7 @@ class SearchViewModel(
     private val configStore: ServerConfigStore,
     private val recentSearchesStore: RecentSearchesStore,
     private val artistTopTracksRepository: ArtistTopTracksRepository,
+    private val songDao: SongDao,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -61,6 +63,8 @@ class SearchViewModel(
 
     /** Retained once a successful API call establishes the client. */
     private var apiClient: SubsonicApiClient? = null
+
+    internal val albumQueueBuilder = AlbumQueueBuilder(songDao) { apiClient }
 
     init {
         loadGenres()
@@ -112,6 +116,17 @@ class SearchViewModel(
 
     fun getCoverArtUrl(coverArtId: String, size: Int = 300): String? =
         apiClient?.getCoverArtUrl(coverArtId, size)
+
+    /**
+     * Fetches all tracks for [song.albumId] from Room, sorts them, and returns the full album
+     * list together with the index of [song] within that list.  The caller passes both to
+     * [playFromSongDtos] so Media3 starts at the tapped position while keeping earlier tracks
+     * accessible as history — identical to the Album Detail behaviour.
+     *
+     * Falls back to ([song], 0) when the album is not in the local catalogue.
+     */
+    suspend fun buildAlbumQueue(song: SongDto): Pair<List<SongDto>, Int> =
+        albumQueueBuilder.build(song)
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -176,6 +191,7 @@ class SearchViewModelFactory(private val context: Context) : ViewModelProvider.F
             configStore = ServerConfigStore(app),
             recentSearchesStore = RecentSearchesStore(app),
             artistTopTracksRepository = app.artistTopTracksRepository,
+            songDao = app.database.songDao(),
         ) as T
     }
 }

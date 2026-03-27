@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,11 +39,13 @@ fun LibraryHeader(
     onNavigateToAlbums: () -> Unit = {},
     onNavigateToArtists: () -> Unit = {},
     onNavigateToPlaylists: () -> Unit = {},
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     Column {
         TopAppBar(
             title = { Text("Library", color = Color.White) },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0A0A0A)),
+            actions = actions,
         )
         Row(
             modifier = Modifier
