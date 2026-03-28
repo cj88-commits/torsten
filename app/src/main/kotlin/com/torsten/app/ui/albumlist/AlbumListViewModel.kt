@@ -8,6 +8,10 @@ import com.torsten.app.TorstenApp
 import com.torsten.app.data.api.SubsonicApiClient
 import com.torsten.app.data.api.dto.AlbumDto
 import com.torsten.app.data.datastore.ServerConfigStore
+import com.torsten.app.ui.home.ForYouComposer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,14 +48,43 @@ class AlbumListViewModel(
                 return@launch
             }
             val client = SubsonicApiClient(config).also { apiClient = it }
-            runCatching {
-                client.getAlbumList2(type = listType, size = 50)
-            }.onSuccess { albums ->
-                _state.value = AlbumListUiState(isLoading = false, albums = albums)
-            }.onFailure { e ->
-                Timber.tag("[AlbumList]").e(e, "Failed to load album list type=%s", listType)
-                _state.value = AlbumListUiState(isLoading = false, error = e.message ?: "Failed to load")
+            if (listType == "forYou") {
+                loadForYou(client)
+            } else {
+                runCatching {
+                    client.getAlbumList2(type = listType, size = 50)
+                }.onSuccess { albums ->
+                    _state.value = AlbumListUiState(isLoading = false, albums = albums)
+                }.onFailure { e ->
+                    Timber.tag("[AlbumList]").e(e, "Failed to load album list type=%s", listType)
+                    _state.value = AlbumListUiState(isLoading = false, error = e.message ?: "Failed to load")
+                }
             }
+        }
+    }
+
+    private suspend fun loadForYou(client: SubsonicApiClient) {
+        runCatching {
+            coroutineScope {
+                val recent   = async(Dispatchers.IO) { client.getAlbumList2("recent",   20) }
+                val frequent = async(Dispatchers.IO) { client.getAlbumList2("frequent", 20) }
+                val newest   = async(Dispatchers.IO) { client.getAlbumList2("newest",   10) }
+                val starred  = async(Dispatchers.IO) {
+                    runCatching { client.getAlbumList2("starred", 10) }.getOrElse { emptyList() }
+                }
+                ForYouComposer.compose(
+                    recent   = recent.await(),
+                    frequent = frequent.await(),
+                    starred  = starred.await(),
+                    newest   = newest.await(),
+                    maxItems = 50,
+                )
+            }
+        }.onSuccess { albums ->
+            _state.value = AlbumListUiState(isLoading = false, albums = albums)
+        }.onFailure { e ->
+            Timber.tag("[AlbumList]").e(e, "Failed to load For You list")
+            _state.value = AlbumListUiState(isLoading = false, error = e.message ?: "Failed to load")
         }
     }
 

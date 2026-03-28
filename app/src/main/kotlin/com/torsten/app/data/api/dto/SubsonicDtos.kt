@@ -155,6 +155,7 @@ data class SongDto(
     val albumId: String? = null,
     val artist: String? = null,
     val artistId: String? = null,
+    val albumArtist: String? = null,
     val track: Int? = null,
     val discNumber: Int? = null,
     val year: Int? = null,
@@ -384,5 +385,20 @@ data class SongsByGenreBodyDto(
 )
 
 data class SongsByGenreContainerDto(
+    val song: List<SongDto>? = null,
+)
+
+data class RandomSongsResponseDto(
+    @SerializedName("subsonic-response") val response: RandomSongsBodyDto,
+)
+
+data class RandomSongsBodyDto(
+    val status: String,
+    val version: String,
+    val randomSongs: RandomSongsContainerDto? = null,
+    val error: SubsonicErrorDto? = null,
+)
+
+data class RandomSongsContainerDto(
     val song: List<SongDto>? = null,
 )

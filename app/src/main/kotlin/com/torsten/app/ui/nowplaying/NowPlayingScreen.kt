@@ -226,7 +226,7 @@ fun NowPlayingScreen(
                 onSeek = { playbackViewModel.seekTo(it) },
                 onStarClick = playbackViewModel::toggleCurrentSongStar,
                 onAlbumClick = { if (state.albumId.isNotEmpty()) onNavigateToAlbum(state.albumId) },
-                onArtistClick = { if (state.artistId.isNotEmpty()) onNavigateToArtist(state.artistId) },
+                onArtistClick = { if (state.navigationArtistId.isNotEmpty()) onNavigateToArtist(state.navigationArtistId) },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -299,15 +299,16 @@ private fun NowPlayingControls(
             }
         }
         Spacer(modifier = Modifier.height(2.dp))
-        // Artist name — tappable
+        // Artist name — tappable; uses album's canonical artist (not track's featured artist)
+        // so collaboration tracks always navigate to the album owner.
         Text(
-            text = state.artistName,
+            text = state.navigationArtistName,
             fontSize = 15.sp,
             color = TorstenColor.TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clickable(
-                enabled = state.artistId.isNotEmpty(),
+                enabled = state.navigationArtistId.isNotEmpty(),
                 onClick = onArtistClick,
             ),
         )

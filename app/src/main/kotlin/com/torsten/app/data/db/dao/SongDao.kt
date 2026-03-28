@@ -26,9 +26,10 @@ interface SongDao {
     suspend fun getByArtistId(artistId: String): List<SongEntity>
 
     @Query("""
-        SELECT s.* FROM songs s
-        INNER JOIN albums a ON s.albumId = a.id
-        WHERE lower(a.artistName) = lower(:artistName)
+        SELECT * FROM songs
+        WHERE artistName = :artistName
+        OR albumArtistName = :artistName
+        ORDER BY albumId, trackNumber ASC
     """)
     suspend fun getSongsByArtistName(artistName: String): List<SongEntity>
 

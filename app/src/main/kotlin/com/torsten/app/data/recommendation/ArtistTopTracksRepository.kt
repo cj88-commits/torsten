@@ -66,17 +66,42 @@ class ArtistTopTracksRepository(
 
     suspend fun getTopTracks(artistId: String, artistName: String): ArtistTopResult {
         // 0. Cache check — skip LB entirely if fresh result is cached
+        Timber.tag("[ArtistTop]").d("getTopTracks: artistName='$artistName' artistId='$artistId'")
         val cached = artistTopTracksCacheDao.getByArtistId(artistId)
+        Timber.tag("[ArtistTop]").d("Cache lookup artistId='$artistId' hit=${cached != null} valid=${cached?.isValid()}")
         if (cached != null && cached.isValid()) {
             val ids = cached.trackIds.split(",").filter { it.isNotEmpty() }
             val songMap = ids.mapNotNull { songDao.getById(it) }.associateBy { it.id }
             val ordered = ids.mapNotNull { songMap[it] }
-            if (ordered.isNotEmpty()) {
-                Timber.tag("[ArtistTop]").d("Cache hit for $artistName: ${ordered.size} tracks")
-                val byId = songDao.getByArtistId(artistId)
+            Timber.tag("[ArtistTop]").d("Cache entry for '$artistName': ${ordered.size} songs loaded")
+            ordered.forEach {
+                Timber.tag("[ArtistTop]").d("Cached song: '${it.title}' artistName='${it.artistName}' albumArtistName='${it.albumArtistName}'")
+            }
+
+            // Validate: cached songs with populated name fields must belong to this artist.
+            // Guards against stale cache written before the artistName/albumArtistName fix,
+            // or Navidrome artistId collisions between collaborating artists.
+            val poisoned = ordered.filter { song ->
+                (song.artistName.isNotEmpty() || song.albumArtistName.isNotEmpty()) &&
+                    song.artistName != artistName && song.albumArtistName != artistName
+            }
+            if (poisoned.isNotEmpty()) {
+                Timber.tag("[ArtistTop]").w(
+                    "Cache poisoned for '$artistName' (artistId=$artistId): " +
+                        "${poisoned.size}/${ordered.size} songs from wrong artist " +
+                        "(e.g. '${poisoned.first().title}' by '${poisoned.first().albumArtistName}'). " +
+                        "Invalidating cache entry.",
+                )
+                artistTopTracksCacheDao.deleteByArtistId(artistId)
+                // Fall through to fresh fetch below
+            } else if (ordered.isNotEmpty()) {
+                val byIdRaw = songDao.getByArtistId(artistId)
+                val byId = byIdRaw.filter {
+                    it.albumArtistName == artistName || it.artistName == artistName
+                }
                 val byName = songDao.getSongsByArtistName(artistName)
                 val allSongs = (byId + byName).distinctBy { it.id }
-                Timber.tag("[ArtistTop]").d("Cache hit allSongs for $artistName: byId=${byId.size} byName=${byName.size} merged=${allSongs.size}")
+                Timber.tag("[ArtistTop]").d("Cache hit allSongs for $artistName: byIdRaw=${byIdRaw.size} byId=${byId.size} byName=${byName.size} merged=${allSongs.size}")
                 return ArtistTopResult(
                     displayTracks = ArtistTopTracksSelector.selectTopFive(ordered, allSongs, artistName),
                     fullTracks = ArtistTopTracksSelector.selectFullQueue(ordered),
@@ -91,12 +116,16 @@ class ArtistTopTracksRepository(
         // 2. Hydrate missing album songs
         hydrateAlbums(artistId, artistName)
 
-        // 3. Re-query merged pool (by artistId + by albumArtistName for compilations/features)
-        val byId = songDao.getByArtistId(artistId)
+        // 3. Re-query merged pool (by artistId + by albumArtistName for compilations/features).
+        // Filter byId to the artist's own songs — Navidrome may assign artistId to featured artists.
+        val byIdRaw = songDao.getByArtistId(artistId)
+        val byId = byIdRaw.filter {
+            it.albumArtistName == artistName || it.artistName == artistName
+        }
         val byName = songDao.getSongsByArtistName(artistName)
         val songPool = (byId + byName).distinctBy { it.id }
             .sortedWith(compareBy({ it.albumId }, { it.discNumber }, { it.trackNumber }))
-        Timber.tag("[ArtistTop]").d("Merged song pool for $artistName: ${songPool.size} songs")
+        Timber.tag("[ArtistTop]").d("Merged song pool for $artistName: byIdRaw=${byIdRaw.size} byId=${byId.size} byName=${byName.size} pool=${songPool.size}")
 
         // 4. Resolve MBID
         val mbid = resolveMbid(artistId, artistName) ?: run {
@@ -176,6 +205,8 @@ class ArtistTopTracksRepository(
                                 starred = dto.starred != null,
                                 localFilePath = null,
                                 lastUpdated = now,
+                                artistName = dto.artist.orEmpty(),
+                                albumArtistName = albumDto.artist ?: artistName,
                             )
                         }
                         songDao.upsertAll(songs)

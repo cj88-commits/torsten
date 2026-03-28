@@ -88,54 +88,120 @@ class InstantMixRepositoryV2(
             "Fallback triggered: $needsFallback (lbEmpty=${lbEntries.isEmpty()}, lbMatched=$lbMatchCount)",
         )
 
-        if (needsFallback && currentMixToken.get() == myToken) {
-            val config = serverConfigStore.serverConfig.first()
-            if (config.isConfigured) {
-                val client = SubsonicApiClient(config)
-                // Shared across both batches so the second call never re-upserts the first's stubs.
-                val entityMap = mutableMapOf<String, SongEntity>()
+        // Shared across all Subsonic batches so stubs are never re-upserted across calls.
+        val entityMap = mutableMapOf<String, SongEntity>()
+        val config = serverConfigStore.serverConfig.first()
+        val client = if (config.isConfigured) SubsonicApiClient(config) else null
 
-                // ── 4a. First Subsonic batch ──────────────────────────────────
-                val firstBatch = runCatching { client.getSimilarSongs2(seedSong.id, 50) }
-                    .getOrElse { emptyList() }
-                Timber.tag(tag).d("Subsonic batch-1 candidates: ${firstBatch.size}")
-                upsertAndMerge(firstBatch, usedSongIds, entityMap, pool)
-                Timber.tag(tag).d("After dedup pool size: ${pool.size}")
+        if (needsFallback && client != null && currentMixToken.get() == myToken) {
+            // ── 4a. First Subsonic batch ──────────────────────────────────────
+            val firstBatch = runCatching { client.getSimilarSongs2(seedSong.id, 50) }
+                .getOrElse { emptyList() }
+            Timber.tag(tag).d("Subsonic batch-1: ${firstBatch.size} songs")
+            firstBatch.groupBy { it.artist ?: "unknown" }.entries
+                .sortedByDescending { it.value.size }.take(6)
+                .forEach { (artist, songs) ->
+                    Timber.tag(tag).d("  Subsonic artist='$artist' count=${songs.size}")
+                }
+            upsertAndMerge(firstBatch, usedSongIds, entityMap, pool)
+            Timber.tag(tag).d("Pool after batch-1 dedup: ${pool.size}")
 
-                // ── 4b. Second batch when pool is still thin ──────────────────
-                // Seed on the top LB-matched song (first in pool) if available;
-                // otherwise fall back to first Subsonic result. The second batch
-                // uses a different seed to retrieve a complementary similar-songs set.
-                if (pool.size < 30 && currentMixToken.get() == myToken) {
-                    val secondSeed = pool.firstOrNull()
-                    if (secondSeed != null) {
-                        val secondBatch = runCatching { client.getSimilarSongs2(secondSeed.id, 50) }
-                            .getOrElse { emptyList() }
-                        Timber.tag(tag).d("Subsonic batch-2 (seed=${secondSeed.id}): ${secondBatch.size} candidates")
-                        upsertAndMerge(secondBatch, usedSongIds, entityMap, pool)
-                        Timber.tag(tag).d("Pool after batch-2: ${pool.size}")
+            // ── 4b. Second batch when pool is still thin ──────────────────────
+            // Prefer a non-seed-artist song as the second-batch seed when
+            // batch-1 was dominated by the seed artist (> 50 %). This breaks
+            // the self-referential loop where getSimilarSongs2 keeps returning
+            // songs by the same artist (common on Navidrome for niche artists
+            // whose Last.fm "similar tracks" data is sparse or self-referential).
+            if (pool.size < 30 && currentMixToken.get() == myToken) {
+                val seedArtistInPool = pool.count { it.artistId == seedSong.artistId }
+                val seedRatio = seedArtistInPool.toFloat() / pool.size.coerceAtLeast(1)
+                Timber.tag(tag).d(
+                    "Seed artist ratio after batch-1: ${"%.0f".format(seedRatio * 100)}%% " +
+                        "($seedArtistInPool/${pool.size})",
+                )
+
+                val secondSeed = if (seedRatio > 0.5f) {
+                    // Pool is seed-artist-heavy — pick the first non-seed song to
+                    // fetch a complementary similar-songs set from a different artist.
+                    val alternate = pool.firstOrNull { it.artistId != seedSong.artistId }
+                    if (alternate != null) {
+                        Timber.tag(tag).d("Batch-2 alternate seed: '${alternate.id}' (non-seed artist)")
                     } else {
-                        Timber.tag(tag).d("Pool thin but no second seed available — skipping batch-2")
+                        Timber.tag(tag).d("No non-seed alternate available — pool entirely seed artist")
                     }
+                    alternate ?: pool.firstOrNull()
+                } else {
+                    pool.firstOrNull()
+                }
+
+                if (secondSeed != null) {
+                    val secondBatch = runCatching { client.getSimilarSongs2(secondSeed.id, 50) }
+                        .getOrElse { emptyList() }
+                    Timber.tag(tag).d("Subsonic batch-2 (seed=${secondSeed.id}): ${secondBatch.size} candidates")
+                    upsertAndMerge(secondBatch, usedSongIds, entityMap, pool)
+                    Timber.tag(tag).d("Pool after batch-2: ${pool.size}")
+                } else {
+                    Timber.tag(tag).d("Pool thin but no second seed available — skipping batch-2")
                 }
             }
         }
 
+        // ── 4c. Random songs fallback ─────────────────────────────────────────
+        // If the pool is still smaller than 20 or dominated by the seed artist
+        // (> 50 %), call getRandomSongs to inject library-wide variety. This
+        // guarantees a full 20-track mix for niche artists (e.g. Eva Cassidy)
+        // where getSimilarSongs2 is self-referential and returns only the seed
+        // artist's own songs.
+        val poolSeedCount = pool.count { it.artistId == seedSong.artistId }
+        val poolSeedRatio = poolSeedCount.toFloat() / pool.size.coerceAtLeast(1)
+        Timber.tag(tag).d(
+            "Pool after Subsonic: size=${pool.size}, seed ratio=${"%.0f".format(poolSeedRatio * 100)}%% ($poolSeedCount/${pool.size})",
+        )
+        if ((pool.size < 20 || poolSeedRatio > 0.5f) && client != null && currentMixToken.get() == myToken) {
+            val randomBatch = runCatching { client.getRandomSongs(count = 50) }.getOrElse { emptyList() }
+            Timber.tag(tag).d("Random fallback: ${randomBatch.size} candidates")
+            upsertAndMerge(randomBatch, usedSongIds, entityMap, pool)
+            Timber.tag(tag).d("Pool after random fallback: ${pool.size}")
+        }
+
         if (currentMixToken.get() != myToken) return emptyList()
 
-        // ── 5. Diversity cap + backfill ───────────────────────────────────────
-        // Pool order: LB-matched songs first (ranked by LB), then Subsonic in server order.
+        // ── 5. Diversity cap + seed-artist companion limit + backfill ─────────
+        // Pool order: LB-matched songs first (ranked by LB), then Subsonic in server order,
+        // then random fallback songs.
         val poolList = pool.toList()
 
         val capped = InstantMixSelector.applyDiversityCap(poolList, target = 19, initialCap = 5, relaxedCap = 8)
-        Timber.tag(tag).d("After diversity cap pool size: ${capped.size}")
+        Timber.tag(tag).d("After diversity cap: ${capped.size}/${poolList.size} songs")
+        capped.groupBy { it.artistId }.entries
+            .sortedByDescending { it.value.size }.take(6)
+            .forEach { (artistId, songs) ->
+                Timber.tag(tag).d("  Capped artistId='$artistId' count=${songs.size}")
+            }
 
-        val filled = InstantMixSelector.fillToTarget(capped, poolList, target = 19)
-        Timber.tag(tag).d("After fillToTarget pool size: ${filled.size}")
+        // Enforce seed-artist cap on the companion pool: allow max 3 seed-artist companions
+        // here (seed itself will add 1 more at position 0 = 4 total in the final mix).
+        val cappedWithSeedLimit = InstantMixSelector.enforceSeedArtistCap(
+            capped, seedSong.artistId, maxSeedArtist = 3,
+        )
+        Timber.tag(tag).d(
+            "After seed-artist companion cap: ${cappedWithSeedLimit.size} songs " +
+                "(${cappedWithSeedLimit.count { it.artistId == seedSong.artistId }} seed-artist companions)",
+        )
+
+        // Fill to target-1 prioritising non-seed songs. By listing non-seed songs first in
+        // the uncapped pool, fillToTarget naturally prefers variety when refilling.
+        val nonSeedFirst = poolList.filter { it.artistId != seedSong.artistId } +
+            poolList.filter { it.artistId == seedSong.artistId }
+        val filled = InstantMixSelector.fillToTarget(cappedWithSeedLimit, nonSeedFirst, target = 19)
+        Timber.tag(tag).d("After fillToTarget: ${filled.size} songs")
 
         // ── 6. Final assembly with artist interleaving ────────────────────────
         val result = InstantMixSelector.interleaveMix(seedSong, filled, target = 20)
-        Timber.tag(tag).d("Final mix size: ${result.size} (should always be 20)")
+        Timber.tag(tag).d(
+            "Final mix: ${result.size} songs " +
+                "(seed artist: ${result.count { it.artistId == seedSong.artistId }})",
+        )
         return result
     }
 
@@ -178,6 +244,8 @@ class InstantMixRepositoryV2(
                     starred = dto.starred != null,
                     localFilePath = null,
                     lastUpdated = now,
+                    artistName = dto.artist.orEmpty(),
+                    albumArtistName = dto.albumArtist.orEmpty(),
                 )
                 entityMap[dto.id] = stub
                 newStubs.add(stub)

@@ -104,6 +104,8 @@ class DownloadRepository(
                                 starred = song.starred != null,
                                 localFilePath = null,
                                 lastUpdated = System.currentTimeMillis(),
+                                artistName = song.artist.orEmpty(),
+                                albumArtistName = song.albumArtist.orEmpty(),
                             ),
                         ),
                     )

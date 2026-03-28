@@ -175,6 +175,7 @@ fun ArtistDetailScreen(
                                     artistId = song.artistId,
                                     albumId = song.albumId,
                                     duration = song.duration,
+                                    coverArt = albums.firstOrNull { it.id == song.albumId }?.coverArtId,
                                 )
                             }
                         seed?.let(onStartInstantMix)
@@ -321,7 +322,7 @@ fun ArtistDetailScreen(
                                     album = "",
                                     albumId = s.albumId,
                                     duration = s.duration,
-                                    coverArt = null,
+                                    coverArt = albums.firstOrNull { it.id == s.albumId }?.coverArtId,
                                     genre = null,
                                 )
                             )

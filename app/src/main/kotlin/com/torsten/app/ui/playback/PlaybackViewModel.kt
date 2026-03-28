@@ -55,8 +55,23 @@ data class PlaybackUiState(
     val currentIndex: Int = 0,
     val currentSongId: String = "",
     val currentSongTitle: String = "",
+    /** Track-level artist name (e.g. "Avicii feat. Rita Ora"). May differ from album artist. */
     val artistName: String = "",
+    /** Track-level artist ID. May differ from the album's artistId for collaboration tracks. */
     val artistId: String = "",
+    /**
+     * Album's canonical artist ID, resolved from the DB when the track changes.
+     * Always use this (not [artistId]) for Now Playing artist navigation: it reliably
+     * points to the artist who owns the album, not the track's featured/primary artist.
+     * Falls back to [artistId] until the DB lookup completes.
+     */
+    val albumArtistId: String = "",
+    /**
+     * Album's canonical artist name. Use this for the tappable artist link in Now Playing.
+     * For a Rita Ora album containing "Avicii feat. Rita Ora", this is "Rita Ora".
+     * Falls back to [artistName] until the DB lookup completes.
+     */
+    val albumArtistName: String = "",
     val albumTitle: String = "",
     val albumId: String = "",
     val artworkUri: Uri? = null,
@@ -67,7 +82,19 @@ data class PlaybackUiState(
     val durationMs: Long = 0L,
     val songTitles: List<String> = emptyList(),
     val trackNumbers: List<Int> = emptyList(),
-)
+) {
+    /**
+     * The artist ID to use for Now Playing artist navigation.
+     * Prefers [albumArtistId] (the album owner) over [artistId] (the track artist).
+     */
+    val navigationArtistId: String get() = albumArtistId.ifEmpty { artistId }
+
+    /**
+     * The artist name to display in the Now Playing tappable artist link.
+     * Prefers [albumArtistName] over [artistName] for the same reason as [navigationArtistId].
+     */
+    val navigationArtistName: String get() = albumArtistName.ifEmpty { artistName }
+}
 
 class PlaybackViewModel(private val context: Context) : ViewModel() {
 
@@ -280,6 +307,11 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
         val coverArtUrl = extras?.getString("coverArtUrl")
         val coverArtId = extras?.getString("coverArtId")
 
+        Timber.tag("[NowPlaying]").d("artistName='$artistName'")
+        Timber.tag("[NowPlaying]").d("albumArtistName from extras (pre-lookup): artistId='$artistId'")
+        Timber.tag("[NowPlaying]").d("albumId='$albumId'")
+        Timber.tag("[NowPlaying]").d("coverArtUrl='$coverArtUrl' coverArtId='$coverArtId'")
+
         val titles = mutableListOf<String>()
         val numbers = mutableListOf<Int>()
         val timeline = controller.currentTimeline
@@ -304,6 +336,10 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 currentSongTitle = currentSongTitle,
                 artistName = artistName,
                 artistId = artistId,
+                // albumArtistId/Name are resolved below via a DB lookup; optimistically
+                // clear them here so stale values from a previous track don't persist.
+                albumArtistId = "",
+                albumArtistName = "",
                 albumTitle = albumTitleFromExtras,
                 albumId = albumId,
                 artworkUri = metadata?.artworkUri,
@@ -315,6 +351,29 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 songTitles = titles,
                 trackNumbers = numbers,
             )
+        }
+
+        // Resolve the album's canonical artist via the DB so Now Playing always navigates
+        // to the album owner — not the track's featured artist (e.g. for "Avicii feat.
+        // Rita Ora" on a Rita Ora album, this sets albumArtistId = Rita Ora's ID).
+        if (albumId.isNotEmpty()) {
+            viewModelScope.launch {
+                val album = db.albumDao().getById(albumId)
+                Timber.tag("[NowPlaying]").d(
+                    "albumArtistId='${album?.artistId}' albumArtistName='${album?.artistName}'",
+                )
+                _state.update { current ->
+                    // Guard: only apply if the user hasn't skipped to a different track.
+                    if (current.albumId == albumId) {
+                        current.copy(
+                            albumArtistId = album?.artistId ?: artistId,
+                            albumArtistName = album?.artistName ?: artistName,
+                        )
+                    } else {
+                        current
+                    }
+                }
+            }
         }
     }
 
@@ -465,6 +524,10 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
     fun playSong(song: SongDto, config: ServerConfig) {
         val now = System.currentTimeMillis()
         val albumId = song.albumId.orEmpty().ifEmpty { "search_${song.id}" }
+        // Fall back to albumId when the DTO has no explicit coverArt ID (e.g. artist-page seed
+        // for a single-track album). Subsonic accepts album IDs in getCoverArt just as well.
+        val effectiveCoverArtId = song.coverArt?.takeIf { it.isNotBlank() }
+            ?: song.albumId?.takeIf { it.isNotBlank() }
         val stubAlbum = AlbumEntity(
             id = albumId,
             title = song.album.orEmpty(),
@@ -474,7 +537,7 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             genre = null,
             songCount = 1,
             duration = song.duration ?: 0,
-            coverArtId = song.coverArt,
+            coverArtId = effectiveCoverArtId,
             starred = false,
             downloadState = DownloadState.NONE,
             downloadProgress = 0,
@@ -495,8 +558,10 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
             starred = song.starred != null,
             localFilePath = null,
             lastUpdated = now,
+            artistName = song.artist.orEmpty(),
+            albumArtistName = song.albumArtist.orEmpty(),
         )
-        val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
+        val coverArtUrl = effectiveCoverArtId?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
         playAlbum(listOf(stubSong), stubAlbum, 0, config, coverArtUrl, preservePriorityQueue = true)
     }
 
@@ -527,6 +592,8 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                             starred = seedSong.starred != null,
                             localFilePath = null,
                             lastUpdated = System.currentTimeMillis(),
+                            artistName = seedSong.artist.orEmpty(),
+                            albumArtistName = seedSong.albumArtist.orEmpty(),
                         )
                     val artistName = seedSong.artist.orEmpty()
                     val entities = (context.applicationContext as TorstenApp)
@@ -597,6 +664,8 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 starred = song.starred != null,
                 localFilePath = null,
                 lastUpdated = now,
+                artistName = song.artist.orEmpty(),
+                albumArtistName = song.albumArtist.orEmpty(),
             )
             val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
             PlaybackService.MediaItemBuilder.buildMediaItems(
@@ -749,6 +818,8 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 starred = song.starred != null,
                 localFilePath = null,
                 lastUpdated = now,
+                artistName = song.artist.orEmpty(),
+                albumArtistName = song.albumArtist.orEmpty(),
             )
             val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
             PlaybackService.MediaItemBuilder.buildMediaItems(
@@ -845,6 +916,8 @@ class PlaybackViewModel(private val context: Context) : ViewModel() {
                 starred = song.starred != null,
                 localFilePath = null,
                 lastUpdated = now,
+                artistName = song.artist.orEmpty(),
+                albumArtistName = song.albumArtist.orEmpty(),
             )
             val coverArtUrl = song.coverArt?.let { SubsonicApiClient(config).getCoverArtUrl(it, 300) }
             enqueueEntitySong(stubSong, stubAlbum, config, coverArtUrl)

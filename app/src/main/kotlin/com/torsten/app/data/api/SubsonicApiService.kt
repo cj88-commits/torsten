@@ -13,6 +13,7 @@ import com.torsten.app.data.api.dto.Search3ResponseDto
 import com.torsten.app.data.api.dto.SimilarArtists2ResponseDto
 import com.torsten.app.data.api.dto.SimilarSongsResponseDto
 import com.torsten.app.data.api.dto.SimilarSongs2ResponseDto
+import com.torsten.app.data.api.dto.RandomSongsResponseDto
 import com.torsten.app.data.api.dto.SongsByGenreResponseDto
 import com.torsten.app.data.api.dto.TopSongsResponseDto
 import com.torsten.app.data.api.dto.StarResponseDto
@@ -151,4 +152,9 @@ internal interface SubsonicApiService {
         @Query("count") count: Int = 25,
         @Query("offset") offset: Int = 0,
     ): SongsByGenreResponseDto
+
+    @GET("rest/getRandomSongs")
+    suspend fun getRandomSongs(
+        @Query("size") size: Int = 10,
+    ): RandomSongsResponseDto
 }

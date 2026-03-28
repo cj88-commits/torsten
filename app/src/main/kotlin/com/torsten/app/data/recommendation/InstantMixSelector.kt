@@ -187,6 +187,38 @@ object InstantMixSelector {
         return result
     }
 
+    /**
+     * Hard cap on how many times the seed artist may appear in the final mix.
+     * Songs from [seedArtistId] beyond position [maxSeedArtist] are dropped; all
+     * other songs are kept in their original order.
+     *
+     * The seed is always at index 0 and counts toward the cap, so the caller
+     * should always pass [maxSeedArtist] >= 1.
+     *
+     * This is a last-resort safety net applied after [interleaveMix]. It ensures
+     * that even when the Subsonic fallback pool is dominated by the seed artist
+     * (e.g. a niche artist whose "similar songs" list is mostly self-referential),
+     * the final result does not read as a single-artist playlist.
+     *
+     * If removal makes the result shorter than [target], the caller may choose to
+     * accept the shorter mix rather than backfill with more seed-artist songs.
+     */
+    fun enforceSeedArtistCap(
+        mix: List<SongEntity>,
+        seedArtistId: String,
+        maxSeedArtist: Int = 4,
+    ): List<SongEntity> {
+        var seedArtistCount = 0
+        return mix.filter { song ->
+            if (song.artistId == seedArtistId) {
+                seedArtistCount++
+                seedArtistCount <= maxSeedArtist
+            } else {
+                true
+            }
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────────
 
     private fun capByArtist(songs: List<SongEntity>, cap: Int): List<SongEntity> {

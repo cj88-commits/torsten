@@ -14,4 +14,7 @@ interface ArtistTopTracksCacheDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ArtistTopTracksCacheEntity)
+
+    @Query("DELETE FROM artist_top_tracks_cache WHERE artistId = :artistId")
+    suspend fun deleteByArtistId(artistId: String)
 }

@@ -18,4 +18,8 @@ data class SongEntity(
     val starred: Boolean,
     val localFilePath: String?,
     val lastUpdated: Long,
+    /** Track-level artist name (e.g. "Rita Ora ft. Avicii"). */
+    val artistName: String = "",
+    /** Album-level artist name (e.g. "Avicii"). Used to attribute compilation tracks correctly. */
+    val albumArtistName: String = "",
 )

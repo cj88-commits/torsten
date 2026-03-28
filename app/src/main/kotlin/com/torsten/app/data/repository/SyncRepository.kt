@@ -233,6 +233,8 @@ class SyncRepository(
                     starred = dto.starred != null,
                     localFilePath = existingPaths[dto.id],
                     lastUpdated = now,
+                    artistName = dto.artist.orEmpty(),
+                    albumArtistName = albumWithSongs.artist.orEmpty(),
                 )
             }
             db.songDao().upsertAll(songEntities)

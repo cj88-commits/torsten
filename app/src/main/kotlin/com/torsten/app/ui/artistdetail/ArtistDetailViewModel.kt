@@ -109,10 +109,21 @@ class ArtistDetailViewModel(
                 _displayTopTracks.value = result.displayTracks
                 _fullTopTracks.value = result.fullTracks
             }
-            // Re-query after hydration: getTopTracks may have fetched new songs from the API,
-            // and byName picks up compilation/feature tracks the byId query misses.
-            val byId = db.songDao().getByArtistId(artistId)
+            // Re-query after hydration: getTopTracks may have fetched new songs from the API.
+            // byId is filtered to the artist's OWN songs — Navidrome may assign artistId to
+            // featured artists, so we drop any byId song where neither artistName nor
+            // albumArtistName exactly matches. byName is already exact-match only.
+            Timber.d("[ArtistDetail] Loading artist: '$artistName'")
+            val byIdRaw = db.songDao().getByArtistId(artistId)
+            val byId = byIdRaw.filter {
+                it.albumArtistName == artistName || it.artistName == artistName
+            }
+            Timber.d("[ArtistDetail] byId: raw=${byIdRaw.size} filtered=${byId.size}")
             val byName = db.songDao().getSongsByArtistName(artistName)
+            Timber.d("[ArtistDetail] Total songs returned by byName: ${byName.size}")
+            byName.forEach {
+                Timber.d("[ArtistDetail] song='${it.title}' artistName='${it.artistName}' albumArtistName='${it.albumArtistName}'")
+            }
             val allSongs = (byId + byName).distinctBy { it.id }
             Timber.d("[ArtistDetail] post-hydration allSongs.size=${allSongs.size} (byId=${byId.size} byName=${byName.size})")
             _artistSongs.value = allSongs

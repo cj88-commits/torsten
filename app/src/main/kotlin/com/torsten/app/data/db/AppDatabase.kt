@@ -41,7 +41,7 @@ import com.torsten.app.data.db.entity.SyncMetadataEntity
         ArtistTopTracksCacheEntity::class,
         PlaylistTrackEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

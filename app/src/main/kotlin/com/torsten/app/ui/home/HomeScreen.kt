@@ -48,11 +48,13 @@ import com.torsten.app.ui.common.SectionHeader
 import com.torsten.app.ui.theme.Radius
 import com.torsten.app.ui.theme.TorstenColor
 
-private val CardWidth    = 150.dp
-private val CardSpacing  = 12.dp
-private val RowPadding   = 16.dp
-private val HeroArtSize  = 104.dp
-private val SectionGap   = 28.dp
+private val CardWidth      = 150.dp
+private val CardSpacing    = 12.dp
+private val RowPadding     = 16.dp
+private val HeroArtSize    = 104.dp
+private val SectionGap     = 28.dp
+private val ForYouCardSize = 100.dp   // denser than standard 150dp cards
+private val ForYouSpacing  = 8.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,7 +118,7 @@ fun HomeScreen(
 
                         // ── Hero: Continue Listening ───────────────────────────
                         item {
-                            val hero = state.recentlyPlayed.firstOrNull()
+                            val hero = state.continueListening
                             if (state.isLoading || hero != null) {
                                 SectionHeader(title = "Continue Listening")
                                 if (state.isLoading) {
@@ -143,6 +145,17 @@ fun HomeScreen(
                                 getCoverArtUrl = viewModel::getCoverArtUrl,
                                 onAlbumClick   = onAlbumClick,
                                 onSeeAll       = { onSeeAll("recent", "Recently Played") },
+                            )
+                        }
+
+                        // ── For You ───────────────────────────────────────────
+                        item {
+                            ForYouSection(
+                                albums         = state.forYou,
+                                isLoading      = state.isLoading,
+                                getCoverArtUrl = viewModel::getCoverArtUrl,
+                                onAlbumClick   = onAlbumClick,
+                                onSeeAll       = { onSeeAll("forYou", "For You") },
                             )
                         }
 
@@ -367,6 +380,119 @@ private fun SkeletonCard() {
             modifier = Modifier
                 .fillMaxWidth(0.7f)
                 .height(12.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(TorstenColor.ElevatedSurface),
+        )
+    }
+}
+
+// ─── For You section ──────────────────────────────────────────────────────────
+
+@Composable
+private fun ForYouSection(
+    albums: List<AlbumDto>,
+    isLoading: Boolean,
+    getCoverArtUrl: (id: String, size: Int) -> String?,
+    onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
+    onSeeAll: (() -> Unit)? = null,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SectionHeader(title = "For You", onSeeAll = onSeeAll)
+
+        if (isLoading) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = RowPadding),
+                horizontalArrangement = Arrangement.spacedBy(ForYouSpacing),
+            ) {
+                items(14) { ForYouSkeletonCard() }
+            }
+        } else if (albums.isEmpty()) {
+            Text(
+                text = "Nothing here yet",
+                style = MaterialTheme.typography.bodySmall,
+                color = TorstenColor.TextSecondary,
+                modifier = Modifier.padding(horizontal = RowPadding, vertical = 4.dp),
+            )
+        } else {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = RowPadding),
+                horizontalArrangement = Arrangement.spacedBy(ForYouSpacing),
+            ) {
+                items(albums, key = { it.id }) { album ->
+                    ForYouAlbumCard(
+                        album        = album,
+                        coverArtUrl  = album.coverArt?.let { getCoverArtUrl(it, 300) },
+                        onAlbumClick = onAlbumClick,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(SectionGap))
+    }
+}
+
+@Composable
+private fun ForYouAlbumCard(
+    album: AlbumDto,
+    coverArtUrl: String?,
+    onAlbumClick: (albumId: String, albumTitle: String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(ForYouCardSize)
+            .clickable { onAlbumClick(album.id, album.name) },
+    ) {
+        AlbumCoverArt(
+            coverArtUrl        = coverArtUrl,
+            coverArtId         = album.coverArt,
+            contentDescription = album.name,
+            isOnline           = true,
+            modifier           = Modifier
+                .size(ForYouCardSize)
+                .clip(RoundedCornerShape(Radius.card)),
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text       = album.name,
+            fontSize   = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color      = Color.White,
+            maxLines   = 1,
+            overflow   = TextOverflow.Ellipsis,
+        )
+        Text(
+            text     = album.artist.orEmpty(),
+            fontSize = 10.sp,
+            color    = TorstenColor.TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ForYouSkeletonCard() {
+    Column(modifier = Modifier.width(ForYouCardSize)) {
+        Box(
+            modifier = Modifier
+                .size(ForYouCardSize)
+                .clip(RoundedCornerShape(Radius.card))
+                .background(TorstenColor.ElevatedSurface),
+        )
+        Spacer(Modifier.height(5.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(12.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(TorstenColor.ElevatedSurface),
+        )
+        Spacer(Modifier.height(3.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.65f)
+                .height(11.dp)
                 .clip(RoundedCornerShape(3.dp))
                 .background(TorstenColor.ElevatedSurface),
         )

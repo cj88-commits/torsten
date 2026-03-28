@@ -11,9 +11,9 @@ class InstantMixSelectorTest {
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     /**
-     * [artistName] maps to [SongEntity.artistId] — SongEntity has no artistName field.
-     * InstantMixSelector.matchCandidates compares song.artistId against candidate.artistName,
-     * so test fixtures set artistId to the same string used in the candidate.
+     * [artistName] is stored in [SongEntity.artistId] here because
+     * [InstantMixSelector.matchCandidates] compares [SongEntity.artistId] against
+     * [LbRadioCandidate.artistName]. Test fixtures mirror that convention.
      */
     private fun song(
         id: String,
@@ -529,5 +529,217 @@ class InstantMixSelectorTest {
         val pool = (1..30).map { song("s$it", "Track $it", "SameArtist") }
         val result = runPipeline(seed, pool)
         assertEquals(20, result.size)
+    }
+
+    // ── enforceSeedArtistCap ──────────────────────────────────────────────────
+
+    @Test
+    fun `enforceSeedArtistCap limits seed artist to maxSeedArtist songs`() {
+        // 10-song mix: seed + 4 more EvaC + 5 other artists
+        val seed   = song("seed", "Seed", "EvaC")
+        val evaSongs   = (1..5).map { song("eva$it", "Eva Track $it", "EvaC") }
+        val otherSongs = (1..4).map { song("o$it",   "Other $it",     "Other$it") }
+        // Mix has 1 + 5 + 4 = 10 songs, 6 from EvaC
+        val mix = listOf(seed) + evaSongs + otherSongs
+
+        val result = InstantMixSelector.enforceSeedArtistCap(mix, seedArtistId = "EvaC", maxSeedArtist = 4)
+
+        assertEquals("Expected exactly 4 EvaC songs", 4, result.count { it.artistId == "EvaC" })
+        assertEquals("Non-seed songs must be untouched", 4, result.count { it.artistId != "EvaC" })
+        // Seed must survive (it is always the first EvaC song encountered)
+        assertEquals("Seed must be at index 0", seed, result.first())
+    }
+
+    @Test
+    fun `enforceSeedArtistCap with all same artist returns only maxSeedArtist songs`() {
+        // Simulates the Eva Cassidy scenario: all 20 slots filled with the seed artist.
+        val seed = song("seed", "Seed", "EvaC")
+        val rest = (1..19).map { song("eva$it", "Eva Track $it", "EvaC") }
+        val allEva = listOf(seed) + rest
+
+        val result = InstantMixSelector.enforceSeedArtistCap(allEva, seedArtistId = "EvaC", maxSeedArtist = 4)
+
+        assertEquals("Expected exactly 4 songs after cap", 4, result.size)
+        assertTrue("All remaining must be EvaC", result.all { it.artistId == "EvaC" })
+        assertEquals("Seed must be first", seed, result.first())
+    }
+
+    @Test
+    fun `final mix never contains more than 4 songs from seed artist`() {
+        // Full pipeline: seed artist + diverse pool, but seed artist cap applied last.
+        val seed = song("seed", "Eva - Origin", "EvaC")
+        // Pool mimics a Navidrome fallback: 15 EvaC + 5 from other artists
+        val evaPool   = (1..15).map { song("ep$it", "Eva $it", "EvaC") }
+        val otherPool = (1..5).map  { song("op$it", "Other $it", "Other$it") }
+        val pool = evaPool + otherPool  // 20 companion songs
+
+        val interleaved = InstantMixSelector.interleaveMix(seed, pool, target = 20)
+        val result      = InstantMixSelector.enforceSeedArtistCap(interleaved, seedArtistId = "EvaC")
+
+        val evaCCount = result.count { it.artistId == "EvaC" }
+        assertTrue("Expected ≤ 4 EvaC songs, got $evaCCount", evaCCount <= 4)
+        assertEquals("Seed must be first", seed, result.first())
+    }
+
+    @Test
+    fun `interleaveMix with single-artist Subsonic pool still enforces seed artist cap`() {
+        // Worst case: Subsonic returned 20 songs all from the seed artist (e.g. Eva Cassidy
+        // on a Navidrome instance where getSimilarSongs2 is self-referential).
+        val seed     = song("seed", "Fields of Gold", "EvaC")
+        val evaPool  = (1..19).map { song("e$it", "Eva Track $it", "EvaC") }
+
+        // interleaveMix alone: 20 EvaC songs (seed + 19 companions, all deferred then flushed)
+        val interleaved = InstantMixSelector.interleaveMix(seed, evaPool, target = 20)
+        assertEquals("interleaveMix must still produce 20", 20, interleaved.size)
+
+        // Cap applied as the final pass
+        val result  = InstantMixSelector.enforceSeedArtistCap(interleaved, seedArtistId = "EvaC")
+        val evaCCount = result.count { it.artistId == "EvaC" }
+
+        assertTrue("Expected ≤ 4 EvaC songs after cap, got $evaCCount", evaCCount <= 4)
+        assertEquals("Seed must survive at index 0", seed, result.first())
+    }
+
+    // ── enforceSeedArtistCap + refill pipeline ────────────────────────────────
+    //
+    // These tests validate the fixed getMix pipeline: seed-artist companions are capped
+    // to 3 (= 4 total with seed) BEFORE interleaveMix, then remaining slots are filled
+    // from a non-seed-first ordering of the pool. This prevents the "4 tracks" bug where
+    // enforceSeedArtistCap removed 16 songs from a self-referential Subsonic pool and
+    // nothing was left to refill with.
+
+    /**
+     * Simulates the fixed getMix pipeline for use in selector-level tests.
+     * [subsonicPool] represents what Subsonic returned; [randomPool] simulates the
+     * getRandomSongs fallback (injected when pool is seed-heavy or too small).
+     */
+    private fun runPipelineWithFallback(
+        seed: SongEntity,
+        subsonicPool: List<SongEntity>,
+        randomPool: List<SongEntity> = emptyList(),
+        target: Int = 20,
+    ): List<SongEntity> {
+        val poolSeedCount = subsonicPool.count { it.artistId == seed.artistId }
+        val poolSeedRatio = poolSeedCount.toFloat() / subsonicPool.size.coerceAtLeast(1)
+        val mergedPool = if (subsonicPool.size < target - 1 || poolSeedRatio > 0.5f) {
+            (subsonicPool + randomPool).distinctBy { it.id }
+        } else {
+            subsonicPool
+        }
+
+        val capped = InstantMixSelector.applyDiversityCap(mergedPool, target = target - 1, initialCap = 5, relaxedCap = 8)
+        // Companion cap: max 3 seed-artist songs here; seed adds 1 more = 4 total.
+        val cappedWithSeedLimit = InstantMixSelector.enforceSeedArtistCap(capped, seed.artistId, maxSeedArtist = 3)
+        val nonSeedFirst = mergedPool.filter { it.artistId != seed.artistId } +
+            mergedPool.filter { it.artistId == seed.artistId }
+        val filled = InstantMixSelector.fillToTarget(cappedWithSeedLimit, nonSeedFirst, target = target - 1)
+        return InstantMixSelector.interleaveMix(seed, filled, target = target)
+    }
+
+    @Test
+    fun `full pipeline always returns exactly 20 tracks with seed at index 0`() {
+        // Mirrors the complete getMix() pipeline (step 5 → 6) for the normal case:
+        // applyDiversityCap → enforceSeedArtistCap(max=3) → fillToTarget(nonSeedFirst) → interleaveMix.
+        // Runs multiple pool shapes to cover the invariant broadly.
+        data class Case(val label: String, val subsonic: List<SongEntity>, val random: List<SongEntity>)
+
+        val seed = song("seed", "Fields of Gold", "EvaC")
+        val cases = listOf(
+            Case("diverse 25-song pool",
+                subsonic = (1..25).map { song("s$it", "Track $it", "Artist${it % 8}") },
+                random = emptyList()),
+            Case("0 LB matches + 30 Subsonic songs",
+                subsonic = (1..30).map { song("s$it", "Track $it", "Artist${it % 6}") },
+                random = emptyList()),
+            Case("self-referential Subsonic + random fallback",
+                subsonic = (1..20).map { song("e$it", "Eva $it", "EvaC") },
+                random = (1..50).map { song("r$it", "Rand $it", "RandArtist${it % 10}") }),
+            Case("5 LB matches + 20 Subsonic songs",
+                subsonic = (1..5).map { song("lb$it", "LB $it", "LbArtist$it") } +
+                    (1..20).map { song("sub$it", "Sub $it", "SubArtist${it % 5}") },
+                random = emptyList()),
+        )
+
+        for (case in cases) {
+            val result = runPipelineWithFallback(seed, case.subsonic, case.random)
+            assertEquals("${case.label}: expected 20 tracks", 20, result.size)
+            assertEquals("${case.label}: seed must be at index 0", seed, result.first())
+            assertEquals(
+                "${case.label}: seed must appear exactly once",
+                1, result.count { it.id == seed.id },
+            )
+            val ids = result.map { it.id }
+            assertEquals("${case.label}: no duplicate IDs", ids.distinct(), ids)
+        }
+    }
+
+    @Test
+    fun `when Subsonic returns only seed artist songs getRandomSongs pool is used as fallback`() {
+        // Simulates: Subsonic getSimilarSongs2 returned 20 EvaC songs (self-referential).
+        // getRandomSongs provides 50 diverse songs. Pipeline must use the random pool.
+        val seed = song("seed", "Fields of Gold", "EvaC")
+        val subsonicPool = (1..20).map { song("e$it", "Eva $it", "EvaC") }
+        val randomPool = (1..50).map { song("r$it", "Random $it", "RandArtist${it % 10}") }
+
+        val result = runPipelineWithFallback(seed, subsonicPool, randomPool)
+
+        assertEquals("Mix must contain 20 tracks", 20, result.size)
+        val evaCCount = result.count { it.artistId == "EvaC" }
+        assertTrue("Expected ≤ 4 EvaC songs, got $evaCCount", evaCCount <= 4)
+        assertTrue("Mix must contain non-EvaC songs from random pool", result.any { it.artistId != "EvaC" })
+    }
+
+    @Test
+    fun `final mix after seed artist cap is refilled to 20 using fallback pool`() {
+        // Pool is all-EvaC before fallback; random pool provides the needed variety.
+        val seed = song("seed", "Fields of Gold", "EvaC")
+        val evaPool = (1..19).map { song("e$it", "Eva $it", "EvaC") }
+        val randomPool = (1..50).map { song("r$it", "Random $it", "Diverse${it % 8}") }
+
+        val result = runPipelineWithFallback(seed, evaPool, randomPool)
+
+        assertEquals("Mix must be exactly 20 tracks", 20, result.size)
+        assertEquals("Seed must be at index 0", seed, result.first())
+        val evaCCount = result.count { it.artistId == "EvaC" }
+        assertTrue("EvaC must be capped at 4, got $evaCCount", evaCCount <= 4)
+    }
+
+    @Test
+    fun `enforceSeedArtistCap followed by fillToTarget always returns 20 songs`() {
+        // Directly tests: cap companions to 3, then fillToTarget from a large non-seed pool.
+        val seed = song("seed", "Fields of Gold", "EvaC")
+        val companions = (1..19).map { song("e$it", "Eva $it", "EvaC") }
+        val nonSeedPool = (1..50).map { song("r$it", "Random $it", "RandArtist${it % 8}") }
+
+        // Cap companions: max 3 seed-artist songs allowed in companion pool.
+        val cappedCompanions = InstantMixSelector.enforceSeedArtistCap(companions, "EvaC", maxSeedArtist = 3)
+        assertEquals("Cap must leave exactly 3 companions", 3, cappedCompanions.size)
+
+        // Fill to 19 from the non-seed pool.
+        val filled = InstantMixSelector.fillToTarget(cappedCompanions, nonSeedPool, target = 19)
+        assertEquals("fillToTarget must reach 19", 19, filled.size)
+
+        // Assemble final 20-track mix.
+        val result = InstantMixSelector.interleaveMix(seed, filled, target = 20)
+        assertEquals("Final mix must be exactly 20 songs", 20, result.size)
+        assertEquals("Seed must be first", seed, result.first())
+    }
+
+    @Test
+    fun `mix with only 4 available non-seed songs returns 20 using random fallback`() {
+        // Edge case: Subsonic returned 16 EvaC + only 4 non-seed songs.
+        // Random fallback provides the remaining variety to reach 20.
+        val seed = song("seed", "Fields of Gold", "EvaC")
+        val subsonicPool = (1..16).map { song("e$it", "Eva $it", "EvaC") } +
+            (1..4).map { song("ns$it", "NonSeed $it", "OtherArtist$it") }
+        val randomPool = (1..50).map { song("r$it", "Random $it", "RandArtist${it % 10}") }
+
+        val result = runPipelineWithFallback(seed, subsonicPool, randomPool)
+
+        assertEquals("Mix must contain 20 tracks", 20, result.size)
+        val evaCCount = result.count { it.artistId == "EvaC" }
+        assertTrue("EvaC must be capped at 4, got $evaCCount", evaCCount <= 4)
+        val ids = result.map { it.id }
+        assertEquals("No duplicate IDs in mix", ids.distinct(), ids)
     }
 }

@@ -312,6 +312,13 @@ class SubsonicApiClient(private val config: ServerConfig) {
         return body.similarSongs2?.song.orEmpty()
     }
 
+    /** Returns a random selection of songs from the library. */
+    suspend fun getRandomSongs(count: Int = 10): List<SongDto> {
+        val body = service.getRandomSongs(count).response
+        checkStatus(body.status, body.error?.message)
+        return body.randomSongs?.song.orEmpty()
+    }
+
     /** Returns random songs from the given genre. */
     suspend fun getSongsByGenre(genre: String, count: Int = 25, offset: Int = 0): List<SongDto> {
         val body = service.getSongsByGenre(genre, count, offset).response
