@@ -6,121 +6,126 @@ import timber.log.Timber
 
 object ArtistTopTracksSelector {
 
-    private val SKIP_WORDS = setOf(
-        "live", "acoustic", "wembley", "remix", "edition", "demo", "remaster",
-    )
-
     /**
-     * Normalise a title for fuzzy matching: lowercase, strip parenthetical content,
-     * strip featured-artist suffixes, strip non-alphanumeric characters.
+     * Normalise a title for matching:
+     *  1. NFD Unicode decomposition — strips diacritics so "Kärleken" and "Karleken" both
+     *     become "karleken". Handles Swedish/Nordic ä→a, ö→o, å→a, etc.
+     *  2. Lowercase
+     *  3. Strip parenthetical/bracketed content
+     *  4. Strip featured-artist credit (requires whitespace before feat/ft/featuring)
+     *  5. Strip any remaining non-ASCII characters and collapse whitespace
      */
     fun normaliseTitle(title: String): String {
-        var s = title.lowercase()
+        // Step 1: decompose diacritics and strip combining marks (NFD → base ASCII)
+        var s = java.text.Normalizer.normalize(title, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}"), "")   // \p{M} = any combining/diacritic mark
+        s = s.lowercase()
         s = s.replace(Regex("\\(.*?\\)"), "")
         s = s.replace(Regex("\\[.*?\\]"), "")
-        s = s.replace(Regex("\\bfe?a?t\\.?.*"), "")
+        // Require whitespace before feat/ft to avoid matching words like "fattiga" or "after"
+        s = s.replace(Regex("\\s+(?:feat(?:uring|\\.)?|ft\\.?)\\b.*"), "")
         s = s.replace(Regex("[^a-z0-9 ]"), "")
         s = s.replace(Regex("\\s+"), " ").trim()
         return s
     }
 
-    /** Trigram Jaccard similarity score in [0, 1]. */
-    fun trigramScore(a: String, b: String): Float {
-        val ta = trigrams(a)
-        val tb = trigrams(b)
-        if (ta.isEmpty() && tb.isEmpty()) return 1f
-        val intersection = ta.intersect(tb).size
-        val union = (ta + tb).size
-        return if (union == 0) 0f else intersection.toFloat() / union.toFloat()
-    }
-
     /**
-     * Match LB candidates against local songs, returning matched songs in LB rank order.
+     * Match LB candidates against local songs using exact normalised title match.
      *
-     * Deduplication rules:
-     *  - Each local song can only be matched once (by song ID).
-     *  - LB candidates that normalise to the same title as a previously matched candidate
-     *    are skipped (prevents "Hey Jude" and "Hey Jude (Live)" both consuming a slot).
-     *
-     * Match tiers (lowest number wins):
-     *  1. Exact normalised title match
-     *  2. Substring containment (both strings >= 8 chars)
-     *  3. Trigram Jaccard >= 0.55
-     *
-     * When multiple local songs qualify at the same tier, the one with the shorter raw title
-     * is preferred (and live/remix variants are penalised).
+     * When a title exists across multiple albums, all matching versions are included
+     * so [selectTopFive] can pick the most album-diverse combination.
+     * Each LB title is matched at most once (deduped by normalised title).
      */
     fun matchCandidates(
         lbCandidates: List<LbRecordingCandidate>,
         localSongs: List<SongEntity>,
     ): List<SongEntity> {
-        val usedSongIds = mutableSetOf<String>()
+        Timber.d("[ArtistTop] matchCandidates: ${lbCandidates.size} LB candidates, ${localSongs.size} local songs")
+        Timber.d("[ArtistTop] LB top 10 candidates: ${lbCandidates.take(10).map { it.trackName }}")
+
+        val normToSongs = localSongs.groupBy { normaliseTitle(it.title) }
         val usedNormTitles = mutableSetOf<String>()
+        val usedSongIds = mutableSetOf<String>()
         val results = mutableListOf<SongEntity>()
 
-        for (candidate in lbCandidates) {
-            val normCandidate = normaliseTitle(candidate.trackName)
-            if (!usedNormTitles.add(normCandidate)) continue
-
-            val match = localSongs
-                .filter { it.id !in usedSongIds }
-                .mapNotNull { song ->
-                    val tier = matchTier(normCandidate, normaliseTitle(song.title))
-                        ?: return@mapNotNull null
-                    Triple(song, tier, preferenceScore(song.title))
+        for ((index, candidate) in lbCandidates.withIndex()) {
+            val normTitle = normaliseTitle(candidate.trackName)
+            if (!usedNormTitles.add(normTitle)) {
+                Timber.d("[ArtistTop]   [%2d] SKIP-DUP  '%s' → '%s'", index, candidate.trackName, normTitle)
+                continue
+            }
+            val matches = normToSongs[normTitle]
+            if (matches == null) {
+                Timber.d("[ArtistTop]   [%2d] NO-MATCH  '%s' → '%s'", index, candidate.trackName, normTitle)
+                continue
+            }
+            Timber.d(
+                "[ArtistTop]   [%2d] MATCHED   '%s' → '%s' (%d album version(s))",
+                index, candidate.trackName, normTitle, matches.size,
+            )
+            for (song in matches) {
+                if (usedSongIds.add(song.id)) {
+                    results.add(song)
                 }
-                .sortedWith(compareBy({ it.second }, { it.third }))
-                .firstOrNull() ?: continue
-
-            usedSongIds.add(match.first.id)
-            results.add(match.first)
+            }
         }
 
+        Timber.d("[ArtistTop] matchCandidates: ${results.size} songs matched from ${lbCandidates.size} candidates")
         return results
     }
 
     /**
-     * From a ranked list, pick up to 5 songs with album diversity.
+     * From a ranked list (output of [matchCandidates]), pick up to 5 songs.
      *
-     * Pass 1 (LB diversity): one song per album from lbRanked.
-     * Pass 2 (LB fill): remaining slots from lbRanked ignoring album constraint.
-     * Pass 3 (fill diversity): if still < 5, one song per album from allArtistSongs.
-     * Pass 4 (fill relax): if still < 5, any song from allArtistSongs not already in result.
+     * Songs are grouped by normalised title so that the same track on multiple albums
+     * is treated as one entry — the version on the most album-diverse album is preferred.
      *
-     * Result size is always min(5, totalAvailableSongs).
+     * Pass 1 (LB diversity): iterate LB-ranked title groups; from each group pick the
+     *   first song whose album hasn't appeared in the result yet.
+     * Pass 2 (LB fill): iterate groups again; add the first unused song regardless of album.
+     * Pass 3 (fill diversity): if still < 5, one song per album from [allArtistSongs].
+     * Pass 4 (fill relax): if still < 5, any song from [allArtistSongs] not already in result.
      */
     fun selectTopFive(
         lbRanked: List<SongEntity>,
         allArtistSongs: List<SongEntity> = emptyList(),
         artistName: String = "",
     ): List<SongEntity> {
-        Timber.d("[ArtistTop] selectTopFive: artistName=$artistName")
-        Timber.d("[ArtistTop] selectTopFive: lbRanked.size=${lbRanked.size}")
-        Timber.d("[ArtistTop] selectTopFive: allArtistSongs.size=${allArtistSongs.size}")
+        Timber.d("[ArtistTop] selectTopFive: artistName=$artistName lbRanked=${lbRanked.size} allArtistSongs=${allArtistSongs.size}")
+
+        // Build title groups preserving LB rank order
+        val groupOrder = mutableListOf<String>()
+        val groupMap = mutableMapOf<String, MutableList<SongEntity>>()
+        for (song in lbRanked) {
+            val norm = normaliseTitle(song.title)
+            if (norm !in groupMap) {
+                groupMap[norm] = mutableListOf()
+                groupOrder.add(norm)
+            }
+            groupMap[norm]!!.add(song)
+        }
+        val orderedGroups = groupOrder.map { groupMap[it]!! }
 
         val seenAlbumIds = mutableSetOf<String>()
         val result = mutableListOf<SongEntity>()
         val resultIds = mutableSetOf<String>()
 
-        // Pass 1: LB diversity
-        for (song in lbRanked) {
+        // Pass 1: one per title group, prefer unseen album
+        for (group in orderedGroups) {
             if (result.size >= 5) break
-            if (seenAlbumIds.add(song.albumId)) {
-                result.add(song)
-                resultIds.add(song.id)
-            }
+            val pick = group.firstOrNull { it.albumId !in seenAlbumIds } ?: continue
+            seenAlbumIds.add(pick.albumId)
+            result.add(pick)
+            resultIds.add(pick.id)
         }
-        Timber.d("[ArtistTop] selectTopFive: after LB diversity pass result.size=${result.size}")
 
-        // Pass 2: LB fill (same-album allowed)
-        if (result.size < 5) {
-            for (song in lbRanked) {
-                if (result.size >= 5) break
-                if (song.id !in resultIds) {
-                    result.add(song)
-                    resultIds.add(song.id)
-                }
-            }
+        // Pass 2: fill remaining groups (allow same album)
+        for (group in orderedGroups) {
+            if (result.size >= 5) break
+            val pick = group.firstOrNull { it.id !in resultIds } ?: continue
+            seenAlbumIds.add(pick.albumId)
+            result.add(pick)
+            resultIds.add(pick.id)
         }
 
         // Pass 3 & 4: fill from allArtistSongs
@@ -128,7 +133,6 @@ object ArtistTopTracksSelector {
             val fillCandidates = allArtistSongs
                 .filter { it.id !in resultIds }
                 .sortedWith(compareBy({ it.albumId }, { it.discNumber }, { it.trackNumber }))
-            Timber.d("[ArtistTop] selectTopFive: fillCandidates.size=${fillCandidates.size}")
 
             // Pass 3: diversity fill
             for (song in fillCandidates) {
@@ -138,10 +142,8 @@ object ArtistTopTracksSelector {
                     resultIds.add(song.id)
                 }
             }
-            Timber.d("[ArtistTop] selectTopFive: after diversity fill result.size=${result.size}")
 
-            // Pass 4: relaxed fill — allow any song not already in result
-            // Recomputes seen IDs from the current result to avoid stale state from Pass 3.
+            // Pass 4: relaxed fill
             if (result.size < 5) {
                 val seenIds = result.map { it.id }.toMutableSet()
                 for (song in allArtistSongs) {
@@ -151,28 +153,32 @@ object ArtistTopTracksSelector {
                     }
                 }
             }
-            Timber.d("[ArtistTop] selectTopFive: after relaxed fill result.size=${result.size}")
-        } else {
-            Timber.d("[ArtistTop] selectTopFive: fillCandidates.size=0 (allArtistSongs empty or result already full)")
         }
 
         Timber.d("[ArtistTop] selectTopFive: final=${result.map { it.title }}")
         return result
     }
 
-    /** From a ranked list, pick up to 20 songs for the full playback queue. */
-    fun selectFullQueue(rankedSongs: List<SongEntity>): List<SongEntity> = rankedSongs.take(20)
+    /**
+     * From a ranked list, pick up to 20 unique tracks (deduped by normalised title)
+     * for the full playback queue.
+     */
+    fun selectFullQueue(rankedSongs: List<SongEntity>): List<SongEntity> {
+        val seenNormTitles = mutableSetOf<String>()
+        return rankedSongs
+            .filter { seenNormTitles.add(normaliseTitle(it.title)) }
+            .take(20)
+    }
 
     /**
      * Build a playback queue for when the user taps one of the top-5 tracks.
      *
      * Layout:
-     *   [0..4]           topFive in **original** (ranked) order — no rotation
-     *   [5..target-1]    remaining artist songs, shuffled, excluding top-five
+     *   [0..4]       topFive in original (ranked) order — no rotation
+     *   [5..target-1] remaining artist songs, shuffled, excluding top-five
      *
      * @return Pair of (fullQueue, startIndex) where startIndex is the position of
-     *         [tappedSong] in fullQueue. Pass both to Media3 so tracks before the
-     *         tapped position appear as history and playback begins at the tapped track.
+     *         [tappedSong] in fullQueue.
      */
     fun buildTopTrackQueue(
         tappedSong: SongEntity,
@@ -180,40 +186,12 @@ object ArtistTopTracksSelector {
         allArtistSongs: List<SongEntity>,
         target: Int = 20,
     ): Pair<List<SongEntity>, Int> {
-        // Step 1: top five in original ranked order (no rotation)
         val topFiveIds = topFive.map { it.id }.toSet()
-
-        // Step 2: remaining songs not in top five, shuffled
         val remaining = allArtistSongs
             .filter { it.id !in topFiveIds }
             .shuffled()
-
-        // Step 3: full queue = top five + shuffled remaining, trimmed to target
         val fullQueue = (topFive + remaining).take(target)
-
-        // Step 4: start index = position of tapped song in full queue
         val startIndex = fullQueue.indexOfFirst { it.id == tappedSong.id }.coerceAtLeast(0)
-
         return Pair(fullQueue, startIndex)
-    }
-
-    // ── Private helpers ──────────────────────────────────────────────────────
-
-    private fun matchTier(normA: String, normB: String): Int? = when {
-        normA == normB -> 1
-        normA.length >= 8 && normB.length >= 8 &&
-            (normA.contains(normB) || normB.contains(normA)) -> 2
-        trigramScore(normA, normB) >= 0.55f -> 3
-        else -> null
-    }
-
-    private fun preferenceScore(title: String): Int {
-        val lower = title.lowercase()
-        return if (SKIP_WORDS.any { lower.contains(it) }) title.length + 10_000 else title.length
-    }
-
-    private fun trigrams(s: String): Set<String> {
-        if (s.length < 3) return if (s.isNotEmpty()) setOf(s) else emptySet()
-        return (0..s.length - 3).map { s.substring(it, it + 3) }.toSet()
     }
 }

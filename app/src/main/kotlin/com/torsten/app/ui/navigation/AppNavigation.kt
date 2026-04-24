@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -96,7 +98,15 @@ import com.torsten.app.ui.playback.PlaybackViewModelFactory
 import com.torsten.app.ui.downloads.DownloadsScreen
 import com.torsten.app.ui.downloads.DownloadsViewModel
 import com.torsten.app.ui.downloads.DownloadsViewModelFactory
+import com.torsten.app.ui.explore.ExploreScreen
+import com.torsten.app.ui.explore.ExploreViewModel
+import com.torsten.app.ui.explore.ExploreViewModelFactory
 import com.torsten.app.ui.queue.QueueScreen
+import com.torsten.app.ui.starred.StarredTracksScreen
+import com.torsten.app.ui.starred.StarredTracksViewModelFactory
+import com.torsten.app.ui.starred.StarredTracksViewModel
+import com.torsten.app.ui.starred.enrichToDtos
+import com.torsten.app.TorstenApp
 import com.torsten.app.ui.random.RandomScreen
 import com.torsten.app.ui.random.RandomViewModel
 import com.torsten.app.ui.random.RandomViewModelFactory
@@ -118,6 +128,7 @@ private val tabRoutes = setOf(
     Screen.Artists.route,
     Screen.Playlists.route,
     Screen.Downloads.route,
+    Screen.Explore.route,
 )
 
 // Routes that belong to the Library tab (so Library tab stays highlighted)
@@ -258,6 +269,51 @@ fun AppNavigation() {
                             launchSingleTop = true
                         }
                     },
+                    onStarredTracksClick = {
+                        navController.navigate(Screen.StarredTracks.route)
+                    },
+                    onStarredSongClick = { song, allSongs ->
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            val albumDao = (context.applicationContext as TorstenApp).database.albumDao()
+                            val dtos = enrichToDtos(allSongs, albumDao)
+                            val startIndex = allSongs.indexOf(song).coerceAtLeast(0)
+                            playbackViewModel.playFromSongDtos(
+                                dtos,
+                                config,
+                                startIndex = startIndex,
+                                preservePriorityQueue = true,
+                            )
+                        }
+                    },
+                    onPlayNext = { song ->
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            val dto = com.torsten.app.data.api.dto.SongDto(
+                                id = song.id,
+                                title = song.title,
+                                artist = song.artistName.ifBlank { song.albumArtistName },
+                                artistId = song.artistId,
+                                albumId = song.albumId,
+                                duration = song.duration,
+                                starred = "true",
+                            )
+                            playbackViewModel.enqueueNext(dto, config)
+                        }
+                    },
+                    onAddToPlaylist = { songId -> playlistPickerSongId = songId },
+                    onStartInstantMix = { seed ->
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            playbackViewModel.startInstantMix(seed, config)
+                        }
+                    },
+                    onNavigateToArtist = { artistId ->
+                        navController.navigate(Screen.ArtistDetail.createRoute(artistId))
+                    },
                 )
             }
 
@@ -325,6 +381,27 @@ fun AppNavigation() {
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                )
+            }
+
+            composable(Screen.Explore.route) {
+                val vm: ExploreViewModel = viewModel(
+                    factory = ExploreViewModelFactory(context),
+                )
+                ExploreScreen(
+                    viewModel = vm,
+                    playbackViewModel = playbackViewModel,
+                    onNavigateToNowPlaying = {
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                    },
+                    onNavigateToArtist = { artistId ->
+                        navController.navigate(Screen.ArtistDetail.createRoute(artistId))
+                    },
+                    onNavigateToAlbum = { albumId, title ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
                     },
                 )
             }
@@ -453,6 +530,9 @@ fun AppNavigation() {
                             launchSingleTop = true
                         }
                     },
+                    onStarredTracksClick = {
+                        navController.navigate(Screen.StarredTracks.route)
+                    },
                 )
             }
 
@@ -508,6 +588,7 @@ fun AppNavigation() {
                         navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
                     },
                     onNavigateUp = { navController.navigateUp() },
+                    onAddToPlaylist = { songId -> playlistPickerSongId = songId },
                     onStartInstantMix = { seed ->
                         if (currentRoute != Screen.NowPlaying.route) {
                             navController.navigate(Screen.NowPlaying.route)
@@ -516,6 +597,9 @@ fun AppNavigation() {
                             val config = serverConfigStore.serverConfig.first()
                             playbackViewModel.startInstantMix(seed, config)
                         }
+                    },
+                    onNavigateToAlbum = { albumId, title ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId, title))
                     },
                 )
             }
@@ -540,6 +624,37 @@ fun AppNavigation() {
                     initialName = initialName,
                     onNavigateUp = { navController.navigateUp() },
                     onAddToPlaylist = { songId -> playlistPickerSongId = songId },
+                    onStartInstantMix = { seed ->
+                        if (currentRoute != Screen.NowPlaying.route) {
+                            navController.navigate(Screen.NowPlaying.route)
+                        }
+                        appScope.launch {
+                            val config = serverConfigStore.serverConfig.first()
+                            playbackViewModel.startInstantMix(seed, config)
+                        }
+                    },
+                    onNavigateToArtist = { artistId ->
+                        navController.navigate(Screen.ArtistDetail.createRoute(artistId))
+                    },
+                    onNavigateToAlbum = { albumId, albumTitle ->
+                        navController.navigate(Screen.AlbumDetail.createRoute(albumId, albumTitle))
+                    },
+                )
+            }
+
+            composable(
+                route = Screen.StarredTracks.route,
+                enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(tween(300)) },
+                exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+                popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }, animationSpec = tween(300)) + fadeIn(tween(200)) },
+                popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(tween(200)) },
+            ) {
+                val vm: StarredTracksViewModel = viewModel(factory = StarredTracksViewModelFactory(context))
+                StarredTracksScreen(
+                    viewModel         = vm,
+                    playbackViewModel = playbackViewModel,
+                    onNavigateUp      = { navController.navigateUp() },
+                    onAddToPlaylist   = { songId -> playlistPickerSongId = songId },
                     onStartInstantMix = { seed ->
                         if (currentRoute != Screen.NowPlaying.route) {
                             navController.navigate(Screen.NowPlaying.route)
@@ -694,7 +809,7 @@ private fun AppBottomBar(
         thickness = 1.dp,
         color = Color(0xFF111111),
     )
-    NavigationBar(containerColor = Color(0xFF0A0A0A)) {
+    NavigationBar(containerColor = Color(0xFF0A0A0A), modifier = Modifier.height(72.dp)) {
         // ── Home ──────────────────────────────────────────────────────────────
         NavigationBarItem(
             selected = currentRoute == Screen.Home.route,
@@ -722,6 +837,21 @@ private fun AppBottomBar(
             },
             icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
             label = { Text("Search") },
+            colors = itemColors,
+        )
+
+        // ── Explore ───────────────────────────────────────────────────────────
+        NavigationBarItem(
+            selected = currentRoute == Screen.Explore.route,
+            onClick = {
+                navController.navigate(Screen.Explore.route) {
+                    popUpTo(Screen.Home.route) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+            icon = { Icon(Icons.Rounded.Explore, contentDescription = "Explore") },
+            label = { Text("Explore") },
             colors = itemColors,
         )
 

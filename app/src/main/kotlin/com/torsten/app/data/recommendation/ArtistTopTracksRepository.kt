@@ -16,13 +16,13 @@ import com.torsten.app.data.metabrainz.MusicBrainzClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 data class ArtistTopResult(
     val displayTracks: List<SongEntity>,
@@ -41,6 +41,7 @@ class ArtistTopTracksRepository(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val inFlight = Collections.synchronizedSet(mutableSetOf<String>())
+    private val fetchMutexes = ConcurrentHashMap<String, Mutex>()
 
     fun prefetchIfNeeded(artistId: String, artistName: String) {
         if (artistId.isBlank() || artistName.isBlank()) return
@@ -65,95 +66,91 @@ class ArtistTopTracksRepository(
     }
 
     suspend fun getTopTracks(artistId: String, artistName: String): ArtistTopResult {
-        // 0. Cache check — skip LB entirely if fresh result is cached
         Timber.tag("[ArtistTop]").d("getTopTracks: artistName='$artistName' artistId='$artistId'")
+        val mutex = fetchMutexes.computeIfAbsent(artistId) { Mutex() }
+        return mutex.withLock { getTopTracksLocked(artistId, artistName) }
+    }
+
+    private suspend fun getTopTracksLocked(artistId: String, artistName: String): ArtistTopResult {
+
+        // 0. Cache check — skip network calls if a fresh result is cached
         val cached = artistTopTracksCacheDao.getByArtistId(artistId)
-        Timber.tag("[ArtistTop]").d("Cache lookup artistId='$artistId' hit=${cached != null} valid=${cached?.isValid()}")
         if (cached != null && cached.isValid()) {
             val ids = cached.trackIds.split(",").filter { it.isNotEmpty() }
             val songMap = ids.mapNotNull { songDao.getById(it) }.associateBy { it.id }
             val ordered = ids.mapNotNull { songMap[it] }
-            Timber.tag("[ArtistTop]").d("Cache entry for '$artistName': ${ordered.size} songs loaded")
-            ordered.forEach {
-                Timber.tag("[ArtistTop]").d("Cached song: '${it.title}' artistName='${it.artistName}' albumArtistName='${it.albumArtistName}'")
-            }
-
-            // Validate: cached songs with populated name fields must belong to this artist.
-            // Guards against stale cache written before the artistName/albumArtistName fix,
-            // or Navidrome artistId collisions between collaborating artists.
-            val poisoned = ordered.filter { song ->
-                (song.artistName.isNotEmpty() || song.albumArtistName.isNotEmpty()) &&
-                    song.artistName != artistName && song.albumArtistName != artistName
-            }
-            if (poisoned.isNotEmpty()) {
-                Timber.tag("[ArtistTop]").w(
-                    "Cache poisoned for '$artistName' (artistId=$artistId): " +
-                        "${poisoned.size}/${ordered.size} songs from wrong artist " +
-                        "(e.g. '${poisoned.first().title}' by '${poisoned.first().albumArtistName}'). " +
-                        "Invalidating cache entry.",
-                )
-                artistTopTracksCacheDao.deleteByArtistId(artistId)
-                // Fall through to fresh fetch below
-            } else if (ordered.isNotEmpty()) {
-                val byIdRaw = songDao.getByArtistId(artistId)
-                val byId = byIdRaw.filter {
-                    it.albumArtistName == artistName || it.artistName == artistName
+            if (ordered.isNotEmpty()) {
+                val allSongs = (songDao.getByArtistId(artistId) + songDao.getSongsByArtistName(artistName))
+                    .distinctBy { it.id }
+                val displayTracks = ArtistTopTracksSelector.selectTopFive(ordered, allSongs, artistName)
+                // If we couldn't fill 5 tracks from the cached list but the library has more,
+                // the cache is stale (written when the song pool was incomplete). Bust it.
+                if (displayTracks.size < minOf(5, allSongs.size)) {
+                    Timber.tag("[ArtistTop]").d(
+                        "Cache produced only ${displayTracks.size} tracks but library has ${allSongs.size} songs — invalidating",
+                    )
+                    artistTopTracksCacheDao.deleteByArtistId(artistId)
+                    // Fall through to fresh fetch
+                } else {
+                    Timber.tag("[ArtistTop]").d("Cache hit for '$artistName': ${ordered.size} songs → ${displayTracks.size} display")
+                    return ArtistTopResult(
+                        displayTracks = displayTracks,
+                        fullTracks = ArtistTopTracksSelector.selectFullQueue(ordered),
+                    )
                 }
-                val byName = songDao.getSongsByArtistName(artistName)
-                val allSongs = (byId + byName).distinctBy { it.id }
-                Timber.tag("[ArtistTop]").d("Cache hit allSongs for $artistName: byIdRaw=${byIdRaw.size} byId=${byId.size} byName=${byName.size} merged=${allSongs.size}")
-                return ArtistTopResult(
-                    displayTracks = ArtistTopTracksSelector.selectTopFive(ordered, allSongs, artistName),
-                    fullTracks = ArtistTopTracksSelector.selectFullQueue(ordered),
-                )
             }
         }
 
-        // 1. Initial pool
-        val initialPool = songDao.getByArtistId(artistId)
-        Timber.tag("[ArtistTop]").d("Initial song pool for $artistName: ${initialPool.size} songs")
+        // 1. Hydrate albums: fetch any new albums from the server, then load songs from
+        // ALL known albums (server list + local DB). Returns the full song list directly.
+        val localSongs = hydrateAlbums(artistId, artistName)
 
-        // 2. Hydrate missing album songs
-        hydrateAlbums(artistId, artistName)
-
-        // 3. Re-query merged pool (by artistId + by albumArtistName for compilations/features).
-        // Filter byId to the artist's own songs — Navidrome may assign artistId to featured artists.
-        val byIdRaw = songDao.getByArtistId(artistId)
-        val byId = byIdRaw.filter {
-            it.albumArtistName == artistName || it.artistName == artistName
-        }
-        val byName = songDao.getSongsByArtistName(artistName)
-        val songPool = (byId + byName).distinctBy { it.id }
+        // 2. Build song pool — union with artist-id/name queries as a belt-and-suspenders
+        // fallback for any tracks not covered by the album-based load above.
+        val songPool = (localSongs
+            + songDao.getByArtistId(artistId)
+            + songDao.getSongsByArtistName(artistName))
+            .distinctBy { it.id }
             .sortedWith(compareBy({ it.albumId }, { it.discNumber }, { it.trackNumber }))
-        Timber.tag("[ArtistTop]").d("Merged song pool for $artistName: byIdRaw=${byIdRaw.size} byId=${byId.size} byName=${byName.size} pool=${songPool.size}")
+        Timber.tag("[ArtistTop]").d("Local songs pool size: ${songPool.size}")
+        Timber.tag("[ArtistTop]").d("Local songs containing 'beautiful': ${songPool.filter { "beautiful" in it.title.lowercase() }.map { it.title }}")
 
-        // 4. Resolve MBID
+        // 3. Resolve MBID
         val mbid = resolveMbid(artistId, artistName) ?: run {
-            Timber.tag("[ArtistTop]").d("MBID not resolved for $artistName — falling back to title sort")
+            Timber.tag("[ArtistTop]").d("MBID not resolved for '$artistName' — local fallback")
             return localFallback(songPool, artistName)
         }
 
-        // 5. Fetch LB stats
+        // 4. Fetch ListenBrainz top recording stats
         val candidates = listenBrainzClient.getArtistRecordingStats(mbid)
-        Timber.tag("[ArtistTop]").d("LB candidates for $artistName: ${candidates.size}")
-        if (candidates.isEmpty()) {
-            Timber.tag("[ArtistTop]").d("No LB candidates for $artistName — falling back to title sort")
-            return localFallback(songPool, artistName)
-        }
+        Timber.tag("[ArtistTop]").d("LB candidates for '$artistName': ${candidates.size}")
+        if (candidates.isEmpty()) return localFallback(songPool, artistName)
 
-        // 6. Match
+        // 5. Match against library by normalised title
         val matched = ArtistTopTracksSelector.matchCandidates(candidates, songPool)
-        Timber.tag("[ArtistTop]").d("Total matches for $artistName: ${matched.size}")
+        Timber.tag("[ArtistTop]").d("Matched for '$artistName': ${matched.size}")
         if (matched.isEmpty()) return localFallback(songPool, artistName)
 
-        // 7. Build result
-        val fullTracks = ArtistTopTracksSelector.selectFullQueue(matched)
-        val displayTracks = ArtistTopTracksSelector.selectTopFive(matched, songPool, artistName)
+        Timber.tag("[ArtistTop]").d("All matched songs (pre-diversity): ${matched.map { it.title }}")
+
+        // 6. Build result with backfill: if fewer than 10 LB matches, pad from unmatched
+        // Navidrome tracks (shuffled) so the queue always reaches 10 (or total available).
+        // Order: top LB match → remaining matches shuffled → backfill shuffled.
+        val matchedIds = matched.map { it.id }.toSet()
+        val backfill = songPool.filter { it.id !in matchedIds }.shuffled()
+        val orderedQueue = (matched.take(1) + matched.drop(1).shuffled() + backfill)
+            .distinctBy { it.id }
         Timber.tag("[ArtistTop]").d(
-            "Display top 5 for $artistName: [${displayTracks.joinToString { "'${it.title}' (album=${it.albumId})" }}]",
+            "Queue for '$artistName': ${matched.size} matched + ${backfill.size} backfill candidates",
         )
 
-        // Cache the LB-ranked result for 24 hours
+        val fullTracks = ArtistTopTracksSelector.selectFullQueue(orderedQueue)
+        val displayTracks = ArtistTopTracksSelector.selectTopFive(matched, songPool, artistName)
+        Timber.tag("[ArtistTop]").d(
+            "Display top 5 for '$artistName': [${displayTracks.joinToString { "'${it.title}' (album=${it.albumId})" }}]",
+        )
+
+        // Cache for 24 hours
         artistTopTracksCacheDao.upsert(
             ArtistTopTracksCacheEntity(
                 artistId = artistId,
@@ -165,94 +162,104 @@ class ArtistTopTracksRepository(
         return ArtistTopResult(displayTracks = displayTracks, fullTracks = fullTracks)
     }
 
-    private suspend fun hydrateAlbums(artistId: String, artistName: String) {
+    private suspend fun hydrateAlbums(artistId: String, artistName: String): List<SongEntity> {
         val config = serverConfigStore.serverConfig.first()
-        if (!config.isConfigured) return
+        if (!config.isConfigured) return emptyList()
 
         val client = SubsonicApiClient(config)
-        val artistWithAlbums = runCatching { client.getArtist(artistId) }.getOrNull() ?: return
+        val serverAlbums = runCatching { client.getArtist(artistId) }
+            .getOrNull()?.album.orEmpty()
 
-        val allAlbums = artistWithAlbums.album.orEmpty()
-        val unvisited = allAlbums.filter { songDao.getByAlbum(it.id).isEmpty() }
-        val skipped = allAlbums.size - unvisited.size
-
-        val fetched = java.util.concurrent.atomic.AtomicInteger(0)
-        coroutineScope {
-            unvisited.map { albumDto ->
-                async {
-                    Timber.tag("[ArtistTop]").d("Fetching album '${albumDto.name}' for $artistName")
-                    runCatching {
-                        val albumWithSongs = client.getAlbum(albumDto.id)
-                        val now = System.currentTimeMillis()
-                        val songs = albumWithSongs.song.orEmpty().map { dto ->
-                            // Gson bypasses Kotlin null-safety; guard title explicitly.
-                            @Suppress("SENSELESS_COMPARISON")
-                            val safeTitle = if (dto.title == null) "" else dto.title
-                            // Use the outer artistId as fallback when the song DTO omits it —
-                            // this ensures getByArtistId can find these songs later.
-                            val songArtistId = dto.artistId?.takeIf { it.isNotEmpty() } ?: artistId
-                            SongEntity(
-                                id = dto.id,
-                                albumId = albumDto.id,
-                                artistId = songArtistId,
-                                title = safeTitle,
-                                trackNumber = dto.track ?: 0,
-                                discNumber = dto.discNumber ?: 1,
-                                duration = dto.duration ?: 0,
-                                bitRate = dto.bitRate,
-                                suffix = dto.suffix,
-                                contentType = dto.contentType,
-                                starred = dto.starred != null,
-                                localFilePath = null,
-                                lastUpdated = now,
-                                artistName = dto.artist.orEmpty(),
-                                albumArtistName = albumDto.artist ?: artistName,
-                            )
-                        }
-                        songDao.upsertAll(songs)
-                        // Ensure the album entity exists so getSongsByArtistName JOIN works.
-                        // Uses IGNORE conflict strategy — skips existing rows to preserve download state.
-                        albumDao.insertIfAbsent(listOf(AlbumEntity(
-                            id = albumDto.id,
-                            artistId = albumDto.artistId?.takeIf { it.isNotEmpty() } ?: artistId,
-                            artistName = albumDto.artist ?: artistName,
-                            title = albumDto.name,
-                            year = albumDto.year,
-                            genre = albumDto.genre,
-                            songCount = albumWithSongs.songCount,
-                            duration = albumWithSongs.duration,
-                            coverArtId = albumDto.coverArt,
-                            starred = albumDto.starred != null,
-                            downloadState = DownloadState.NONE,
-                            downloadProgress = 0,
-                            downloadedAt = null,
-                            lastUpdated = now,
-                        )))
-                        fetched.incrementAndGet()
-                    }.onFailure { e ->
-                        Timber.tag("[ArtistTop]").w("Failed to fetch album ${albumDto.id}: ${e.message}")
-                    }
-                }
-            }.awaitAll()
+        if (serverAlbums.isEmpty()) {
+            Timber.tag("[ArtistTop]").w("No albums from server for '$artistName'")
+            return emptyList()
         }
 
-        val poolNow = songDao.getByArtistId(artistId).size
-        Timber.tag("[ArtistTop]").d(
-            "Hydration for $artistName: fetched ${fetched.get()} new, skipped $skipped cached, pool now $poolNow songs",
-        )
+        val localSongs = mutableListOf<SongEntity>()
+
+        for (albumDto in serverAlbums) {
+            val existingSongs = songDao.getByAlbum(albumDto.id)
+            val isCorrupt = existingSongs.isNotEmpty() && existingSongs.size < 3
+            if (isCorrupt) {
+                Timber.tag("[ArtistTop]").w(
+                    "Album '${albumDto.name}': corrupt cache (${existingSongs.size} song(s)) — evicting",
+                )
+                songDao.deleteByAlbum(albumDto.id)
+            }
+            val wasCached = existingSongs.isNotEmpty() && !isCorrupt
+
+            val songs: List<SongEntity> = if (wasCached) {
+                existingSongs
+            } else {
+                runCatching {
+                    val albumWithSongs = client.getAlbum(albumDto.id)
+                    val now = System.currentTimeMillis()
+                    val fetched = albumWithSongs.song.orEmpty().map { dto ->
+                        @Suppress("SENSELESS_COMPARISON")
+                        val safeTitle = if (dto.title == null) "" else dto.title
+                        val songArtistId = dto.artistId?.takeIf { it.isNotEmpty() } ?: artistId
+                        SongEntity(
+                            id = dto.id,
+                            albumId = albumDto.id,
+                            artistId = songArtistId,
+                            title = safeTitle,
+                            trackNumber = dto.track ?: 0,
+                            discNumber = dto.discNumber ?: 1,
+                            duration = dto.duration ?: 0,
+                            bitRate = dto.bitRate,
+                            suffix = dto.suffix,
+                            contentType = dto.contentType,
+                            starred = dto.starred != null,
+                            localFilePath = null,
+                            lastUpdated = now,
+                            artistName = dto.artist.orEmpty(),
+                            albumArtistName = albumDto.artist ?: artistName,
+                        )
+                    }
+                    songDao.upsertAll(fetched)
+                    albumDao.insertIfAbsent(listOf(AlbumEntity(
+                        id = albumDto.id,
+                        artistId = albumDto.artistId?.takeIf { it.isNotEmpty() } ?: artistId,
+                        artistName = albumDto.artist ?: artistName,
+                        title = albumDto.name,
+                        year = albumDto.year,
+                        genre = albumDto.genre,
+                        songCount = albumWithSongs.songCount,
+                        duration = albumWithSongs.duration,
+                        coverArtId = albumDto.coverArt,
+                        starred = albumDto.starred != null,
+                        downloadState = DownloadState.NONE,
+                        downloadProgress = 0,
+                        downloadedAt = null,
+                        lastUpdated = now,
+                    )))
+                    fetched
+                }.getOrElse { e ->
+                    Timber.tag("[ArtistTop]").w("Failed to fetch album '${albumDto.name}': ${e.message}")
+                    emptyList()
+                }
+            }
+
+            localSongs.addAll(songs)
+            Timber.tag("[ArtistTop]").d(
+                "Album '${albumDto.name}': added ${songs.size} songs to pool (cached=$wasCached, corrupt=$isCorrupt)",
+            )
+        }
+
+        return localSongs
     }
 
     private suspend fun resolveMbid(artistId: String, artistName: String): String? {
         val cached = artistMbidCacheDao.getByArtistId(artistId)
         if (cached != null && cached.isValid()) {
-            Timber.tag("[ArtistTop]").d("MBID cache hit for $artistName: ${cached.mbid}")
+            Timber.tag("[ArtistTop]").d("MBID cache hit for '$artistName': ${cached.mbid}")
             return cached.mbid
         }
         val mbid = musicBrainzClient.getArtistMbid(artistName) ?: return null
         artistMbidCacheDao.upsert(
             ArtistMbidCacheEntity(artistId = artistId, mbid = mbid, cachedAt = System.currentTimeMillis()),
         )
-        Timber.tag("[ArtistTop]").d("Resolved MBID for $artistName: $mbid")
+        Timber.tag("[ArtistTop]").d("Resolved MBID for '$artistName': $mbid")
         return mbid
     }
 
